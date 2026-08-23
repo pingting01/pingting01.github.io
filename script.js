@@ -590,8 +590,13 @@ function triggerOutingStep1() {
   const btn = document.getElementById("outingBtn");
   let chars = JSON.parse(localStorage.getItem("characters")) || [];
 
+  if (chars.length === 0 || !chars.some(c => c.name)) {
+    alert("등록된 주민이 없습니다. 주민 등록실에서 주민을 등록해주세요!");
+    return;
+  }
+
   let characterNames = chars.map(c => c.name).filter(n => n);
-  const activeName = characterNames.length > 0 ? characterNames[Math.floor(Math.random() * characterNames.length)] : "무명의 여행자";
+  const activeName = characterNames[Math.floor(Math.random() * characterNames.length)];
 
   const weather = getRandomWeather();
   emojiBox.textContent = weather.emoji;
