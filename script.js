@@ -15,6 +15,10 @@ let currentQuest = null;
 let worldDay = 1;
 const maxCharacters = 6;
 
+// 실제 시간 경과 시뮬레이션 설정 (현실 3시간 = 세계 1일, 한 번에 최대 7일치까지만 처리)
+const REAL_MS_PER_SIM_DAY = 3 * 60 * 60 * 1000;
+const MAX_OFFLINE_CATCHUP_DAYS = 7;
+
 // ==========================================================
 // 데이터 정의
 // ==========================================================
@@ -201,6 +205,34 @@ function updateDayDisplay() {
   if (el) el.textContent = worldDay + "일째";
 }
 
+// 앱을 닫아뒀던 실제 시간을 계산해, 그 사이 흘렀을 법한 며칠치를 자동으로 반영한다
+function processOfflineElapsedTime() {
+  const lastTimestamp = localStorage.getItem("lastActiveTimestamp");
+  const now = Date.now();
+
+  if (lastTimestamp) {
+    const elapsedMs = now - parseInt(lastTimestamp);
+    const elapsedDays = Math.floor(elapsedMs / REAL_MS_PER_SIM_DAY);
+
+    if (elapsedDays > 0) {
+      const cappedDays = Math.min(elapsedDays, MAX_OFFLINE_CATCHUP_DAYS);
+      addLog(`[시간 경과] 자리를 비운 사이 ${elapsedDays}일이 흘렀습니다.`);
+
+      for (let i = 0; i < cappedDays; i++) {
+        generateRandomDailyEvent();
+        worldDay++;
+      }
+      updateDayDisplay();
+
+      if (elapsedDays > cappedDays) {
+        addLog(`[시간 경과] 그보다 더 지난 기간은 별일 없이 평온하게 흘러간 것으로 처리했습니다.`);
+      }
+    }
+  }
+
+  localStorage.setItem("lastActiveTimestamp", now.toString());
+}
+
 // ==========================================================
 // 아이템 / 가방
 // ==========================================================
@@ -318,15 +350,31 @@ function changeView(screenName) {
 }
 
 function addLog(message) {
-  const logSection = document.getElementById("eventLog");
   const time = new Date().toLocaleTimeString();
   const logMsg = `[${time}] ${message}`;
   eventLogsData.push(logMsg);
   if (eventLogsData.length > 150) eventLogsData.shift();
 
-  logSection.innerHTML = eventLogsData.join("<br>");
-  logSection.scrollTop = logSection.scrollHeight;
+  renderLogView();
   saveGameData();
+}
+
+// 검색창에 입력된 이름/키워드로 로그를 필터링해서 보여준다 (비어있으면 전체 표시)
+function renderLogView() {
+  const logSection = document.getElementById("eventLog");
+  if (!logSection) return;
+  const filterInput = document.getElementById("logFilterInput");
+  const keyword = filterInput ? filterInput.value.trim() : "";
+
+  let lines = eventLogsData;
+  if (keyword) lines = eventLogsData.filter(line => line.includes(keyword));
+
+  if (lines.length > 0) {
+    logSection.innerHTML = lines.join("<br>");
+  } else {
+    logSection.innerHTML = keyword ? `"${keyword}"에 대한 기록이 없습니다.` : "";
+  }
+  logSection.scrollTop = logSection.scrollHeight;
 }
 
 function clearEventLogs() {
@@ -1335,6 +1383,54 @@ function saveGameData() {
   localStorage.setItem("memorialList", JSON.stringify(memorialList));
   localStorage.setItem("currentQuest", JSON.stringify(currentQuest));
   localStorage.setItem("worldDay", worldDay);
+  localStorage.setItem("lastActiveTimestamp", Date.now().toString());
+}
+
+// ==========================================================
+// 백업 내보내기 / 불러오기
+// ==========================================================
+function exportGameData() {
+  const data = {
+    characters: JSON.parse(localStorage.getItem("characters")) || [],
+    playerMoney, playerInventory, eventLogsData, memorialList, currentQuest, worldDay,
+    lastActiveTimestamp: localStorage.getItem("lastActiveTimestamp")
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `황야의_저녁_백업_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  addLog("[백업] 세계 데이터를 파일로 내보냈습니다.");
+}
+
+function importGameData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!confirm("불러온 백업 파일로 현재 세계를 덮어씁니다. 계속할까요?")) return;
+
+      localStorage.setItem("characters", JSON.stringify(data.characters || []));
+      localStorage.setItem("playerMoney", data.playerMoney ?? 1000);
+      localStorage.setItem("playerInventory", JSON.stringify(data.playerInventory || []));
+      localStorage.setItem("eventLogsData", JSON.stringify(data.eventLogsData || []));
+      localStorage.setItem("memorialList", JSON.stringify(data.memorialList || []));
+      localStorage.setItem("currentQuest", JSON.stringify(data.currentQuest || null));
+      localStorage.setItem("worldDay", data.worldDay || 1);
+      if (data.lastActiveTimestamp) localStorage.setItem("lastActiveTimestamp", data.lastActiveTimestamp);
+
+      alert("불러오기 완료! 페이지를 새로고침합니다.");
+      location.reload();
+    } catch (err) {
+      alert("파일을 읽는 중 오류가 발생했습니다. 올바른 백업 파일(.json)인지 확인해주세요.");
+    }
+  };
+  reader.readAsText(file);
 }
 
 function loadGameData() {
@@ -1351,9 +1447,7 @@ function loadGameData() {
   const savedLogs = localStorage.getItem("eventLogsData");
   if (savedLogs) {
     eventLogsData = JSON.parse(savedLogs);
-    const logSection = document.getElementById("eventLog");
-    logSection.innerHTML = eventLogsData.join("<br>");
-    logSection.scrollTop = logSection.scrollHeight;
+    renderLogView();
   }
 
   const savedMemorials = localStorage.getItem("memorialList");
@@ -1380,6 +1474,7 @@ function loadGameData() {
 
   updateCardTitlesAndCount();
   saveCharacters(true); // 능력치/스탯 기본값을 즉시 계산해 undefined 표시를 방지
+  processOfflineElapsedTime(); // 자리를 비운 실제 시간만큼 세계를 진행시킨다
   updateBagDisplay();
 }
 
