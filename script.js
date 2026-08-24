@@ -253,6 +253,7 @@ function updateBagDisplay() {
       let displayName = getItemDisplayString(item);
       let isUsable = info.type === "food" || info.type === "med";
       let isBroken = info.type === "broken";
+      let isSellable = !isBroken && (info.price || 0) > 0;
 
       html += `<div class="item-row">
         <span onclick="alert('${displayName}\\n${(info.desc || '').replace(/'/g, "")}')" style="cursor:pointer;" title="클릭하여 설명 보기">${displayName} ℹ️</span>
@@ -262,6 +263,9 @@ function updateBagDisplay() {
       }
       if (isBroken) {
         html += `<button onclick="repairVehicle(${index})" style="padding:2px 6px; font-size:11px; background-color:#38a169;">수리</button>`;
+      }
+      if (isSellable) {
+        html += `<button onclick="sellItem(${index})" style="padding:2px 6px; font-size:11px; background-color:#3182ce;">판매</button>`;
       }
       html += `<button onclick="discardItem(${index})" class="danger-btn" style="padding:2px 6px; font-size:11px;">버리기</button>
         </div></div>`;
@@ -325,6 +329,20 @@ function discardItem(index) {
   let itemName = playerInventory[index];
   playerInventory.splice(index, 1);
   addLog(`[정리] 가방에서 [${itemName}]을/를 버렸습니다.`);
+  updateBagDisplay();
+}
+
+function sellItem(index) {
+  let itemName = playerInventory[index];
+  let info = itemDatabase[itemName];
+  if (!info || !info.price) return;
+
+  let sellPrice = Math.max(1, Math.floor(info.price * 0.5));
+  if (!confirm(`[${itemName}]을(를) ${sellPrice.toLocaleString()} 리움에 판매하시겠습니까?`)) return;
+
+  playerInventory.splice(index, 1);
+  playerMoney += sellPrice;
+  addLog(`[판매] [${getItemDisplayString(itemName)}]을/를 판매했다. (+${sellPrice.toLocaleString()} 리움)`);
   updateBagDisplay();
 }
 
@@ -508,20 +526,36 @@ function attemptCoupleBirth(chars) {
   };
   const babyStats = calculateMaxStats(babyBase);
 
-  chars.push({
+  const babyFull = {
     ...babyBase,
+    charId: generateCharId(),
     power: 20, agility: 20, intel: 20, luck: 50,
     traits: "",
     healthNum: babyStats.maxHealth,
     mentalNum: babyStats.maxMental,
     fatigueNum: 0,
     hungerNum: babyStats.maxHunger
-  });
+  };
+  chars.push(babyFull);
 
   p1.childCount = (p1.childCount || 0) + 1;
   p2.childCount = p1.childCount;
   addLog(`[탄생] ${p1.name}과 ${p2.name} 사이에서 새로운 아이 [${babyName}]가 태어났습니다! (이 커플의 자녀 ${p1.childCount}/${p1.maxChildren}명)`);
+
+  // 주민 등록실에도 카드로 반영해두어야 다음 저장 시 아이가 사라지지 않는다
+  addCharacter(babyFull);
   return babyName;
+}
+
+// 행운 능력치를 살짝 반영한 1d20 주사위 판정 (효과는 소소하게 유지)
+function rollFortune(character) {
+  const diceRoll = Math.floor(Math.random() * 20) + 1;
+  const luckBonus = Math.floor((character.luck || 50) / 20);
+  const total = diceRoll + luckBonus;
+
+  if (total >= 18) return { tier: "행운", total };
+  if (total <= 4) return { tier: "불운", total };
+  return { tier: "보통", total };
 }
 
 // ==========================================================
@@ -552,6 +586,19 @@ function triggerAdventure() {
 
   document.getElementById("adventureResult").textContent = `${activeRes.name} 탐험 완료!`;
 
+  const fortune = rollFortune(activeRes);
+  let fortuneMsg = "";
+  let rewardChance = 0.6;
+  if (fortune.tier === "행운") {
+    rewardChance = 1.0;
+    activeRes.fatigueNum = Math.max(0, activeRes.fatigueNum - Math.round(fatigueAdd * 0.3));
+    fortuneMsg = " 왠지 오늘따라 운이 좋았다.";
+  } else if (fortune.tier === "불운") {
+    rewardChance = 0.3;
+    activeRes.fatigueNum = Math.min(stats.maxFatigue, activeRes.fatigueNum + Math.round(fatigueAdd * 0.3));
+    fortuneMsg = " 오늘따라 유독 되는 일이 없었다.";
+  }
+
   let bonusMsg = "";
   const brokenRoll = Math.random();
   if (brokenRoll < 0.015) {
@@ -562,9 +609,9 @@ function triggerAdventure() {
     bonusMsg = ` 게다가 녹슨 <b>[고장난 자전거]</b>를 발견했다!`;
   }
 
-  addLog(`[탐험] ${logText}${bonusMsg}`);
+  addLog(`[탐험] ${logText}${fortuneMsg}${bonusMsg}`);
 
-  if (Math.random() < 0.6) {
+  if (Math.random() < rewardChance) {
     let pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle" && itemDatabase[k].type !== "special");
     const reward = pool[Math.floor(Math.random() * pool.length)];
     playerInventory.push(reward);
@@ -629,8 +676,13 @@ function triggerOutingStep2() {
     addLog(`[나들이] ${activeName}: ${selectedSentence}`);
   } else if (weather.type === "rain" || weather.type === "snow") {
     emojiBox.textContent = weather.emoji;
+    let rainFatigueRelief = 0;
+    if (activeRes) {
+      activeRes.fatigueNum = Math.max(0, (activeRes.fatigueNum || 0) - 3);
+      rainFatigueRelief = 3;
+    }
     resultBox.textContent = `${activeName}은/는 우비와 장화를 신고 산책을 즐겼다.`;
-    addLog(`[나들이] ${activeName}은/는 우비와 장화를 신고 산책을 즐겼다.`);
+    addLog(`[나들이] ${activeName}은/는 우비와 장화를 신고 산책을 즐겼다. (피로 -${rainFatigueRelief})`);
   } else {
     const roll = Math.random();
     if (roll < 0.35) {
@@ -693,8 +745,8 @@ function triggerOutingStep2() {
 
       let fatigueRelief = 0;
       if (activeRes) {
-        activeRes.fatigueNum = Math.max(0, (activeRes.fatigueNum || 0) - 5);
-        fatigueRelief = 5;
+        activeRes.fatigueNum = Math.max(0, (activeRes.fatigueNum || 0) - 7);
+        fatigueRelief = 7;
       }
       addLog(`[나들이] ${activeName}은/는 맑은 날씨 속에서 평화로운 산책을 즐겼다. (피로 -${fatigueRelief})`);
       checkQuestProgress("outing");
@@ -716,33 +768,57 @@ function triggerOutingStep2() {
 // ==========================================================
 // 상점 모달
 // ==========================================================
+let currentShopStock = {};
+
 function openShopModal(title, itemsList) {
   document.getElementById("shopTitle").textContent = title;
-  const grid = document.getElementById("shopGrid");
-  grid.innerHTML = "";
-
+  currentShopStock = {};
   itemsList.forEach(itemName => {
-    let data = itemDatabase[itemName] || { emoji: "📦", price: 50, desc: "" };
-    let btn = document.createElement("button");
-    btn.className = "shop-item-btn";
-    btn.innerHTML = `<span style="font-size:22px;">${data.emoji}</span>
-      <b>${itemName}</b>
-      <span style="color:#3182ce; font-size:10px;">${data.price.toLocaleString()} 리움</span>`;
-    btn.onclick = () => buyShopItem(itemName, data.price);
-    grid.appendChild(btn);
+    currentShopStock[itemName] = Math.floor(Math.random() * 3) + 1; // 방문마다 1~3개 한정 재고
   });
+  renderShopGrid();
   document.getElementById("shopModal").classList.add("active");
 }
 
+function renderShopGrid() {
+  const grid = document.getElementById("shopGrid");
+  grid.innerHTML = "";
+
+  Object.keys(currentShopStock).forEach(itemName => {
+    let data = itemDatabase[itemName] || { emoji: "📦", price: 50, desc: "" };
+    let stock = currentShopStock[itemName];
+    let btn = document.createElement("button");
+    btn.className = "shop-item-btn";
+
+    if (stock <= 0) {
+      btn.disabled = true;
+      btn.style.opacity = "0.4";
+      btn.innerHTML = `<span style="font-size:22px;">${data.emoji}</span>
+        <b>${itemName}</b>
+        <span style="color:#e53e3e; font-size:10px;">품절</span>`;
+    } else {
+      btn.innerHTML = `<span style="font-size:22px;">${data.emoji}</span>
+        <b>${itemName}</b>
+        <span style="color:#3182ce; font-size:10px;">${data.price.toLocaleString()} 리움 (재고 ${stock})</span>`;
+      btn.onclick = () => buyShopItem(itemName, data.price);
+    }
+    grid.appendChild(btn);
+  });
+}
+
 function buyShopItem(itemName, price) {
+  if ((currentShopStock[itemName] || 0) <= 0) return;
   if (playerMoney < price) {
     alert("리움이 부족합니다!");
     return;
   }
+  if (!confirm(`[${itemName}]을(를) ${price.toLocaleString()} 리움에 구매하시겠습니까?`)) return;
   playerMoney -= price;
   playerInventory.push(itemName);
+  currentShopStock[itemName]--;
   addLog(`[구매] [${getItemDisplayString(itemName)}]을/를 구매했다. (-${price.toLocaleString()} 리움)`);
   updateBagDisplay();
+  renderShopGrid();
 }
 
 function closeShopModal() {
@@ -822,7 +898,8 @@ function generateRandomDailyEvent() {
   let events = [
     `[일상] ${c1.name}은/는 장비를 정비하며 시간을 보냈다.`,
     `[일상] ${c1.name}은/는 황야의 날씨를 확인했다.`,
-    `[일상] ${c1.name}이/가 편지를 작성하여 전달을 부탁했다.`
+    `[일상] ${c1.name}은/는 마법 등기소에 들러 누군가에게 보낼 편지를 부쳤다.`,
+    `[일상] ${c1.name}은/는 우체부에게 먼 안전지대에서 온 편지를 받았다.`
   ];
 
   if (c1.nation === "동쪽") {
@@ -1090,6 +1167,11 @@ function buildCardMarkup(savedData) {
   `;
 }
 
+// 이름/혈액형/별자리가 바뀌어도 같은 주민임을 안정적으로 식별하기 위한 고유 ID
+function generateCharId() {
+  return 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+}
+
 function addCharacter(savedData = null) {
   const container = document.getElementById("characterContainer");
   const currentCards = container.querySelectorAll(".character-card");
@@ -1102,6 +1184,7 @@ function addCharacter(savedData = null) {
   const newCard = document.createElement("div");
   newCard.className = "character-card";
   newCard.innerHTML = buildCardMarkup(savedData);
+  newCard.dataset.charId = (savedData && savedData.charId) ? savedData.charId : generateCharId();
 
   container.appendChild(newCard);
   setupCardEvents(newCard, savedData);
@@ -1201,13 +1284,17 @@ function saveCharacters(isSilent = false) {
     const zodiac = card.dataset.zodiac || "";
     const mbti = card.dataset.mbti || "";
     const foodPref = card.dataset.foodPref || "";
+    const charId = card.dataset.charId || generateCharId();
+    card.dataset.charId = charId;
 
-    let found = existingChars.find(c => c.name === name && c.bloodType === bloodType && c.zodiac === zodiac);
+    // 고유 ID로 우선 식별하고, ID가 없던 예전 저장 데이터는 이름+혈액형+별자리로 한 번만 매칭
+    let found = existingChars.find(c => c.charId === charId) ||
+                existingChars.find(c => !c.charId && c.name === name && c.bloodType === bloodType && c.zodiac === zodiac);
 
     let basePower, baseAgility, baseIntel, baseLuck, assignedTraits;
     let healthNum, mentalNum, fatigueNum, hungerNum, maxChildren, childCount;
 
-    const baseInfo = { name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage, relation, targetName };
+    const baseInfo = { charId, name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage, relation, targetName };
     const stats = calculateMaxStats(baseInfo);
 
     if (found) {
@@ -1455,6 +1542,10 @@ function loadGameData() {
     renderLogView();
   }
 
+  // saveCharacters(true)/saveGameData()가 lastActiveTimestamp를 "지금"으로 덮어쓰기 전에
+  // 반드시 먼저 지난 시간을 계산해야 한다 (순서가 바뀌면 경과 시간이 항상 0으로 계산됨)
+  processOfflineElapsedTime();
+
   const savedMemorials = localStorage.getItem("memorialList");
   if (savedMemorials) {
     memorialList = JSON.parse(savedMemorials);
@@ -1478,8 +1569,7 @@ function loadGameData() {
   }
 
   updateCardTitlesAndCount();
-  saveCharacters(true); // 능력치/스탯 기본값을 즉시 계산해 undefined 표시를 방지
-  processOfflineElapsedTime(); // 자리를 비운 실제 시간만큼 세계를 진행시킨다
+  saveCharacters(true); // 능력치/스탯 기본값을 즉시 계산해 undefined 표시를 방지 (이 시점에 lastActiveTimestamp가 "지금"으로 갱신됨)
   updateBagDisplay();
 }
 
