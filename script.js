@@ -44,6 +44,9 @@ const itemDatabase = {
   "고장난 자전거": { emoji: "🚲💥", desc: "체인이 끊기고 바퀴가 휜 자전거. [수리 공구함]으로 고칠 수 있을 듯하다.", type: "broken", price: 0, repairsTo: "자전거", repairCost: ["수리 공구함"] },
   "고장난 자동차": { emoji: "🚗💥", desc: "시동이 걸리지 않는 낡은 자동차. 공구와 부품이 다량 필요해 보인다.", type: "broken", price: 0, repairsTo: "자동차", repairCost: ["수리 공구함", "범용 부품", "범용 부품"] },
 
+  "그림자 고기": { emoji: "🍢", desc: "그림자의 사체에서 얻은 고기. 해독 과정을 거치면 먹을 수 있다고 한다.", type: "food", effect: 40, price: 60 },
+  "그림자 핵": { emoji: "🔮", desc: "그림자에게서 추출한 핵. 은은하게 빛나며 금전적 가치가 있다.", type: "special", price: 300 },
+
   "야전 배낭": { emoji: "🎒", desc: "더 많은 물품을 지니고 다닐 수 있는 단단한 가방.", type: "gear", price: 200 },
   "나침반": { emoji: "🧭", desc: "길을 잃지 않게 도와준다.", type: "gear", price: 120 },
   "지도": { emoji: "🗺️", desc: "주변 안전지대 및 지형이 기록되어 있다.", type: "gear", price: 100 },
@@ -349,6 +352,25 @@ function sellItem(index) {
 // ==========================================================
 // 화면 전환 / 로그
 // ==========================================================
+// 모바일 화면에서 활동/일지/가방 패널을 탭으로 전환 (PC 화면에는 영향 없음)
+function switchMobileTab(tab) {
+  const cols = { activity: "simColActivity", log: "simColLog", bag: "simColBag" };
+  Object.keys(cols).forEach(key => {
+    const el = document.getElementById(cols[key]);
+    if (!el) return;
+    if (key === tab) el.classList.remove("mobile-hidden");
+    else el.classList.add("mobile-hidden");
+  });
+
+  const btnMap = { activity: "tabBtnActivity", log: "tabBtnLog", bag: "tabBtnBag" };
+  Object.values(btnMap).forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.remove("active-tab");
+  });
+  const activeBtn = document.getElementById(btnMap[tab]);
+  if (activeBtn) activeBtn.classList.add("active-tab");
+}
+
 function changeView(screenName) {
   document.getElementById("mainScreen").classList.remove("active");
   document.getElementById("setupScreen").classList.remove("active");
@@ -514,6 +536,28 @@ function applyShadowInfluence(char) {
   return ` 이유 모를 불안이 스며들어 마음이 무거웠다. (피로 +${amount})`;
 }
 
+// 그림자와의 조우 (전투 없는 판정형): 낮은 확률로 발생, 이미 만든 행운 판정을 재사용해 회피/직면을 가른다
+function attemptShadowEncounter(char, fortune) {
+  if (Math.random() >= 0.04) return "";
+
+  char.corruptionNum = Math.min(100, (char.corruptionNum || 0) + (Math.floor(Math.random() * 5) + 5));
+
+  let msg = "";
+  if (fortune.tier === "불운") {
+    msg = ` 그림자와 마주쳐 다급히 몸을 피했다.`;
+  } else {
+    msg = ` 그림자와 마주쳤으나 침착하게 피해 지나쳤다.`;
+    if (fortune.tier === "행운" && Math.random() < 0.3) {
+      playerInventory.push("그림자 핵");
+      msg += ` 그 자리에 남은 <b>[그림자 핵]</b>을 조심스레 회수했다.`;
+    } else if (Math.random() < 0.15) {
+      playerInventory.push("그림자 고기");
+      msg += ` 흔적으로 남은 <b>[그림자 고기]</b>를 챙겼다.`;
+    }
+  }
+  return msg;
+}
+
 // 상호 연인으로 지정된 성인 커플만 대상으로 하는 저출산 이벤트 (3% 확률)
 function attemptCoupleBirth(chars) {
   if (chars.length >= maxCharacters) return null;
@@ -662,8 +706,9 @@ function triggerAdventure() {
   }
 
   const shadowMsg = applyShadowExposure(activeRes, weatherObj.type);
+  const encounterMsg = attemptShadowEncounter(activeRes, fortune);
 
-  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${bonusMsg}${shadowMsg}`);
+  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${bonusMsg}${shadowMsg}${encounterMsg}`);
 
   if (Math.random() < rewardChance) {
     let pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle" && itemDatabase[k].type !== "special");
@@ -974,13 +1019,42 @@ function generateRandomDailyEvent() {
   ];
 
   if (c1.nation === "동쪽") {
-    events.push({ text: `[일상] 동쪽 출신 ${c1.name}은/는 다른 지역의 도구를 보고 효율이 아쉽다며 혀를 찼다.`, stat: "mentalNum", amount: -2 });
+    const eastEvents = [
+      { text: `[일상] 동쪽 출신 ${c1.name}은/는 다른 지역의 도구를 보고 효율이 아쉽다며 혀를 찼다.`, stat: "mentalNum", amount: -2 },
+      { text: `[일상] 동쪽 출신 ${c1.name}은/는 낡은 장치를 분해해 쓸만한 부품을 골라냈다.`, stat: "mentalNum", amount: 3 },
+      { text: `[일상] 동쪽 출신 ${c1.name}은/는 새로운 개조 아이디어를 골똘히 구상하느라 잠을 설쳤다.`, stat: "fatigueNum", amount: 2 }
+    ];
+    events.push(eastEvents[Math.floor(Math.random() * eastEvents.length)]);
   } else if (c1.nation === "북쪽") {
-    events.push({ text: `[일상] 북쪽 출신 ${c1.name}은/는 시끌벅적한 자리를 뒤로하고 조용히 자리를 피했다.`, stat: "fatigueNum", amount: -3 });
+    const northEvents = [
+      { text: `[일상] 북쪽 출신 ${c1.name}은/는 시끌벅적한 자리를 뒤로하고 조용히 자리를 피했다.`, stat: "fatigueNum", amount: -3 },
+      { text: `[일상] 북쪽 출신 ${c1.name}은/는 눈 쌓인 지붕을 말없이 손보았다.`, stat: "fatigueNum", amount: -2 },
+      { text: `[일상] 북쪽 출신 ${c1.name}은/는 아무 말 없이 사냥 도구를 손질했다.`, stat: "fatigueNum", amount: -3 }
+    ];
+    events.push(northEvents[Math.floor(Math.random() * northEvents.length)]);
   } else if (c1.nation === "서쪽") {
-    events.push({ text: `[일상] 서쪽 출신 ${c1.name}은/는 도움을 받기보다 고장 난 구형 도구를 직접 두드려 고쳤다.`, stat: "mentalNum", amount: 3 });
+    const westEvents = [
+      { text: `[일상] 서쪽 출신 ${c1.name}은/는 도움을 받기보다 고장 난 구형 도구를 직접 두드려 고쳤다.`, stat: "mentalNum", amount: 3 },
+      { text: `[일상] 서쪽 출신 ${c1.name}은/는 혼자 묵묵히 밭일 비슷한 일을 했다.`, stat: "fatigueNum", amount: -3 },
+      { text: `[일상] 서쪽 출신 ${c1.name}은/는 낡은 담벼락을 손수 보수했다.`, stat: "fatigueNum", amount: -2 }
+    ];
+    events.push(westEvents[Math.floor(Math.random() * westEvents.length)]);
   } else if (c1.nation === "남쪽") {
-    events.push({ text: `[일상] 남쪽 출신 ${c1.name}은/는 지나가는 이웃에게 붙임성 좋게 말을 걸었다.`, stat: "mentalNum", amount: 3 });
+    const southEvents = [
+      { text: `[일상] 남쪽 출신 ${c1.name}은/는 지나가는 이웃에게 붙임성 좋게 말을 걸었다.`, stat: "mentalNum", amount: 3 },
+      { text: `[일상] 남쪽 출신 ${c1.name}은/는 지나가는 상인과 흥정하듯 농담을 주고받았다.`, stat: "mentalNum", amount: 4 },
+      { text: `[일상] 남쪽 출신 ${c1.name}은/는 볕 좋은 곳에 나와 한참을 노래를 흥얼거렸다.`, stat: "mentalNum", amount: 3 }
+    ];
+    events.push(southEvents[Math.floor(Math.random() * southEvents.length)]);
+  }
+
+  // 종족별 일상 이벤트
+  if (c1.species === "인간") {
+    events.push({ text: `[일상] ${c1.name}은/는 오래된 사진 한 장을 꺼내 보며 옛 생각에 잠겼다.`, stat: "mentalNum", amount: 3 });
+  } else if (c1.species === "괴물") {
+    events.push({ text: `[일상] ${c1.name}은/는 밤이 되자 한결 편안한 얼굴이 되었다.`, stat: "mentalNum", amount: 4 });
+  } else if (c1.species === "혼혈") {
+    events.push({ text: `[일상] ${c1.name}은/는 인간과 괴물, 양쪽의 방식을 오가며 하루를 보냈다.`, stat: "mentalNum", amount: 2 });
   }
 
   // 특성에 따라 어울리는 일상 이벤트가 조금 더 자주 뽑히도록 후보를 추가한다

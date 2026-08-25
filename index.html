@@ -62,9 +62,15 @@
       <span>이상이면 [휴식], 그 외엔 소소한 일상 이벤트가 천천히 진행됩니다.</span>
     </div>
 
+    <div class="mobile-tabs">
+      <button id="tabBtnActivity" class="active-tab" onclick="switchMobileTab('activity')">📋 활동</button>
+      <button id="tabBtnLog" onclick="switchMobileTab('log')">📜 일지</button>
+      <button id="tabBtnBag" onclick="switchMobileTab('bag')">🎒 가방</button>
+    </div>
+
     <div class="sim-main-layout">
       <!-- 왼쪽: 행동 버튼 영역 -->
-      <div class="sim-column">
+      <div class="sim-column" id="simColActivity">
         <h3>활동 메뉴</h3>
         <div class="action-card">
           <h4>안전지대 나들이</h4>
@@ -96,7 +102,7 @@
       </div>
 
       <!-- 가운데: 로그 기록 영역 -->
-      <div class="sim-column" style="background-color: #ffffff;">
+      <div class="sim-column mobile-hidden" id="simColLog" style="background-color: #ffffff;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h3 style="border:none; margin:0;">생존 일지 📜</h3>
           <button class="danger-btn" onclick="clearEventLogs()" style="font-size: 11px; padding: 4px 8px;">기록 초기화</button>
@@ -116,7 +122,7 @@
       </div>
 
       <!-- 오른쪽: 가방 영역 -->
-      <div class="sim-column">
+      <div class="sim-column mobile-hidden" id="simColBag">
         <h3>가방</h3>
         <div class="bag-card">
           <h4>보유 재화</h4>
