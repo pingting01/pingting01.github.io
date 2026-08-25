@@ -184,7 +184,7 @@ const relationChangePhrases = [
 ];
 
 const adventureTemplates = [
-  (name, weather) => `${name}는 ${weather}가 낀 구역을 탐색했다.`,
+  (name, weather) => `오늘의 날씨는 ${weather}. ${name}는 구역을 탐색했다.`,
   (name) => `${name}는 폐건물 내부를 꼼꼼히 확인했다.`,
   (name) => `${name}는 통행이 끊긴 도로를 우회했다.`,
   (name) => `${name}는 버려진 야전 기지를 확인했다.`,
@@ -482,6 +482,38 @@ function checkCharacterPriority(char) {
   return false;
 }
 
+// ==========================================================
+// 그림자 오염도 (최소 버전: 즉사 없음, 디버프만, 정신력이 완충 역할)
+// ==========================================================
+
+// 탐험 중 그림자에 노출되어 오염도가 조금씩 쌓일 수 있다 (위험한 날씨일수록 확률 상승)
+function applyShadowExposure(char, weatherType) {
+  char.corruptionNum = char.corruptionNum || 0;
+  const chance = weatherType === "special" ? 0.25 : 0.08;
+  if (Math.random() >= chance) return "";
+
+  const amount = Math.floor(Math.random() * 6) + 3; // 3~8
+  char.corruptionNum = Math.min(100, char.corruptionNum + amount);
+  return ` 어딘가에서 옅은 그림자의 흔적이 스치듯 느껴졌다. (오염도 +${amount})`;
+}
+
+// 오염도가 쌓인 상태에서 정신력이 낮으면 가끔 소소한 디버프가 발생한다 (정신력이 높으면 거의 영향 없음)
+function applyShadowInfluence(char) {
+  const corruption = char.corruptionNum || 0;
+  if (corruption < 30) return "";
+
+  const stats = calculateMaxStats(char);
+  const mentalRatio = (char.mentalNum || 0) / stats.maxMental;
+  if (mentalRatio >= 0.5) return ""; // 정신력이 절반 이상이면 완충되어 영향이 거의 없음
+
+  const triggerChance = corruption >= 60 ? 0.35 : 0.15;
+  if (Math.random() >= triggerChance) return "";
+
+  const amount = corruption >= 60 ? (Math.floor(Math.random() * 5) + 5) : (Math.floor(Math.random() * 3) + 2);
+  char.fatigueNum = Math.min(stats.maxFatigue, (char.fatigueNum || 0) + amount);
+  return ` 이유 모를 불안이 스며들어 마음이 무거웠다. (피로 +${amount})`;
+}
+
 // 상호 연인으로 지정된 성인 커플만 대상으로 하는 저출산 이벤트 (3% 확률)
 function attemptCoupleBirth(chars) {
   if (chars.length >= maxCharacters) return null;
@@ -534,7 +566,8 @@ function attemptCoupleBirth(chars) {
     healthNum: babyStats.maxHealth,
     mentalNum: babyStats.maxMental,
     fatigueNum: 0,
-    hungerNum: babyStats.maxHunger
+    hungerNum: babyStats.maxHunger,
+    corruptionNum: 0
   };
   chars.push(babyFull);
 
@@ -582,7 +615,8 @@ function triggerAdventure() {
   activeRes.fatigueNum = Math.min(stats.maxFatigue, (activeRes.fatigueNum || 0) + fatigueAdd);
   activeRes.hungerNum = Math.max(0, (activeRes.hungerNum || stats.maxHunger) - 10);
 
-  const weather = getRandomWeather().text;
+  const weatherObj = getRandomWeather();
+  const weather = weatherObj.text;
   const randomTemplate = adventureTemplates[Math.floor(Math.random() * adventureTemplates.length)];
   let logText = randomTemplate.length === 2 ? randomTemplate(activeRes.name, weather) : randomTemplate(activeRes.name);
 
@@ -627,7 +661,9 @@ function triggerAdventure() {
     bonusMsg = ` 게다가 녹슨 <b>[고장난 자전거]</b>를 발견했다!`;
   }
 
-  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${bonusMsg}`);
+  const shadowMsg = applyShadowExposure(activeRes, weatherObj.type);
+
+  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${bonusMsg}${shadowMsg}`);
 
   if (Math.random() < rewardChance) {
     let pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle" && itemDatabase[k].type !== "special");
@@ -974,7 +1010,9 @@ function generateRandomDailyEvent() {
     statLabel = ` (정신력 ${chosen.amount > 0 ? "+" : ""}${chosen.amount})`;
   }
 
-  addLog(chosen.text + statLabel);
+  const shadowMsg = applyShadowInfluence(c1);
+
+  addLog(chosen.text + statLabel + shadowMsg);
   attemptCoupleBirth(chars);
   localStorage.setItem("characters", JSON.stringify(chars));
   renderResidentMemos(chars);
@@ -1308,11 +1346,6 @@ function randomizeNewCharacter() {
 // 관계 지명 상호 동기화: A→B 지정 시 B도 자동으로 A를 같은(반대) 관계로 지정
 // 주민이 1명뿐이면 관계/지명은 항상 공란으로 강제
 function syncMutualRelations(characters) {
-  if (characters.length <= 1) {
-    characters.forEach(c => { c.relation = "지인"; c.targetName = ""; });
-    return;
-  }
-
   characters.forEach(c => {
     if (c.targetName) {
       const target = characters.find(t => t.name === c.targetName);
@@ -1325,6 +1358,9 @@ function syncMutualRelations(characters) {
         target.targetName = c.name;
         target.relation = inv;
       }
+    } else {
+      // 지명 대상이 없으면 관계도 항상 지인으로 통일 (대상 없이 관계만 남는 것을 방지)
+      c.relation = "지인";
     }
   });
 }
@@ -1353,7 +1389,7 @@ function saveCharacters(isSilent = false) {
                 existingChars.find(c => !c.charId && c.name === name && c.bloodType === bloodType && c.zodiac === zodiac);
 
     let basePower, baseAgility, baseIntel, baseLuck, assignedTraits;
-    let healthNum, mentalNum, fatigueNum, hungerNum, maxChildren, childCount;
+    let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, maxChildren, childCount;
 
     const baseInfo = { charId, name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage, relation, targetName };
     const stats = calculateMaxStats(baseInfo);
@@ -1368,6 +1404,7 @@ function saveCharacters(isSilent = false) {
       mentalNum = found.mentalNum ?? stats.maxMental;
       fatigueNum = found.fatigueNum ?? 50;
       hungerNum = found.hungerNum ?? stats.maxHunger;
+      corruptionNum = found.corruptionNum ?? 0;
       maxChildren = found.maxChildren;
       childCount = found.childCount;
     } else {
@@ -1390,13 +1427,14 @@ function saveCharacters(isSilent = false) {
       mentalNum = stats.maxMental;
       fatigueNum = 50;
       hungerNum = stats.maxHunger;
+      corruptionNum = 0;
     }
 
     characters.push({
       ...baseInfo,
       power: basePower, agility: baseAgility, intel: baseIntel, luck: baseLuck,
       traits: assignedTraits,
-      healthNum, mentalNum, fatigueNum, hungerNum,
+      healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum,
       maxChildren, childCount
     });
   });
@@ -1434,11 +1472,13 @@ function renderResidentMemos(characters) {
     const mentalNum = char.mentalNum ?? stats.maxMental;
     const fatigueNum = char.fatigueNum ?? 0;
     const hungerNum = char.hungerNum ?? stats.maxHunger;
+    const corruptionNum = char.corruptionNum ?? 0;
 
     let hPct = (healthNum / stats.maxHealth) * 100;
     let mPct = (mentalNum / stats.maxMental) * 100;
     let fPct = (fatigueNum / stats.maxFatigue) * 100;
     let huPct = (hungerNum / stats.maxHunger) * 100;
+    let coPct = corruptionNum; // 오염도는 0~100 고정 범위
 
     let stageWarning = "";
     if ((char.lifeStage === "어린이" || char.lifeStage === "청소년") && char.relation === "연인") {
@@ -1480,6 +1520,10 @@ function renderResidentMemos(characters) {
         <div class="stat-bar-container">
           <span>허기 (${hungerNum}/${stats.maxHunger})</span>
           <div class="stat-bar-bg"><div class="stat-bar-fill" style="width: ${huPct}%; background: #38a169;"></div></div>
+        </div>
+        <div class="stat-bar-container" style="margin-top:8px;">
+          <span>🌑 그림자 오염도 (${corruptionNum}/100)</span>
+          <div class="stat-bar-bg" style="background:#2d2438; border:1px solid #4a1942;"><div class="stat-bar-fill" style="width: ${coPct}%; background: linear-gradient(90deg, #6b46c1, #1a1025);"></div></div>
         </div>
       </div>
     `;
