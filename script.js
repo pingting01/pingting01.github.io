@@ -568,6 +568,8 @@ function triggerAdventure() {
     return;
   }
 
+  advanceDay(); // 로그 순서상 날짜 경과를 행동 결과보다 먼저 기록
+
   const activeRes = chars[Math.floor(Math.random() * chars.length)];
   checkCharacterPriority(activeRes);
 
@@ -597,6 +599,22 @@ function triggerAdventure() {
     rewardChance = 0.3;
     activeRes.fatigueNum = Math.min(stats.maxFatigue, activeRes.fatigueNum + Math.round(fatigueAdd * 0.3));
     fortuneMsg = " 오늘따라 유독 되는 일이 없었다.";
+    // 보호 부적을 지니고 있으면 불운의 여파를 조금 완화해준다
+    if (playerInventory.includes("보호 부적")) {
+      activeRes.fatigueNum = Math.max(0, activeRes.fatigueNum - Math.round(fatigueAdd * 0.15));
+      fortuneMsg += " 그래도 지니고 있던 부적 덕분인지 큰 화는 면했다.";
+    }
+  }
+
+  // 소지품 중 나침반/지도가 탐험 결과에 살짝 관여한다
+  let itemMsg = "";
+  if (playerInventory.includes("나침반")) {
+    activeRes.fatigueNum = Math.max(0, activeRes.fatigueNum - 2);
+    itemMsg += " 나침반 덕분에 길을 헤매지 않았다.";
+  }
+  if (playerInventory.includes("지도")) {
+    rewardChance = Math.min(1, rewardChance + 0.15);
+    itemMsg += " 지참한 지도 덕분에 놓칠 뻔한 것을 발견했다.";
   }
 
   let bonusMsg = "";
@@ -609,7 +627,7 @@ function triggerAdventure() {
     bonusMsg = ` 게다가 녹슨 <b>[고장난 자전거]</b>를 발견했다!`;
   }
 
-  addLog(`[탐험] ${logText}${fortuneMsg}${bonusMsg}`);
+  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${bonusMsg}`);
 
   if (Math.random() < rewardChance) {
     let pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle" && itemDatabase[k].type !== "special");
@@ -623,7 +641,6 @@ function triggerAdventure() {
   checkQuestProgress("adventure");
   localStorage.setItem("characters", JSON.stringify(chars));
   renderResidentMemos(chars);
-  advanceDay();
 }
 
 // ==========================================================
@@ -659,6 +676,8 @@ function triggerOutingStep2() {
   const resultBox = document.getElementById("outingResult");
   const btn = document.getElementById("outingBtn");
   let chars = JSON.parse(localStorage.getItem("characters")) || [];
+
+  advanceDay(); // 로그 순서상 날짜 경과를 행동 결과보다 먼저 기록
 
   const { activeName, weather } = currentOutingData;
   let activeRes = chars.find(c => c.name === activeName) || chars[0];
@@ -762,7 +781,6 @@ function triggerOutingStep2() {
 
   btn.textContent = "나들이 준비";
   btn.onclick = triggerOutingStep1;
-  advanceDay();
 }
 
 // ==========================================================
@@ -890,30 +908,73 @@ function triggerQuickNews() {
 // ==========================================================
 // 일상 이벤트 자동 생성 (재생/자동 행동 공용, 하루를 진행시키지는 않음)
 // ==========================================================
+// 특성이 많은 주민일수록 일상 이벤트에 조금 더 자주 등장한다 (소소한 가중치)
+function pickWeightedCharacter(chars) {
+  let weighted = chars.map(c => ({
+    c,
+    weight: 1 + ((c.traits ? c.traits.split(",").length : 0) * 0.3)
+  }));
+  let totalWeight = weighted.reduce((sum, w) => sum + w.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (let w of weighted) {
+    if (r < w.weight) return w.c;
+    r -= w.weight;
+  }
+  return chars[0];
+}
+
 function generateRandomDailyEvent() {
   let chars = JSON.parse(localStorage.getItem("characters")) || [];
   if (chars.length === 0) return;
 
-  let c1 = chars[Math.floor(Math.random() * chars.length)];
+  let c1 = pickWeightedCharacter(chars);
+
+  // 일상 이벤트는 소소하게나마 체력/정신력/피로를 회복시켜준다 (탐험·나들이의 소모를 상쇄하는 창구)
   let events = [
-    `[일상] ${c1.name}은/는 장비를 정비하며 시간을 보냈다.`,
-    `[일상] ${c1.name}은/는 황야의 날씨를 확인했다.`,
-    `[일상] ${c1.name}은/는 마법 등기소에 들러 누군가에게 보낼 편지를 부쳤다.`,
-    `[일상] ${c1.name}은/는 우체부에게 먼 안전지대에서 온 편지를 받았다.`
+    { text: `[일상] ${c1.name}은/는 장비를 정비하며 시간을 보냈다.`, stat: "fatigueNum", amount: -3 },
+    { text: `[일상] ${c1.name}은/는 황야의 날씨를 확인했다.`, stat: "fatigueNum", amount: -2 },
+    { text: `[일상] ${c1.name}은/는 마법 등기소에 들러 누군가에게 보낼 편지를 부쳤다.`, stat: "mentalNum", amount: 3 },
+    { text: `[일상] ${c1.name}은/는 우체부에게 먼 안전지대에서 온 편지를 받았다.`, stat: "mentalNum", amount: 4 }
   ];
 
   if (c1.nation === "동쪽") {
-    events.push(`[일상] 동쪽 출신 ${c1.name}은/는 다른 지역의 도구를 보고 효율이 아쉽다며 혀를 찼다.`);
+    events.push({ text: `[일상] 동쪽 출신 ${c1.name}은/는 다른 지역의 도구를 보고 효율이 아쉽다며 혀를 찼다.`, stat: "mentalNum", amount: -2 });
   } else if (c1.nation === "북쪽") {
-    events.push(`[일상] 북쪽 출신 ${c1.name}은/는 시끌벅적한 자리를 뒤로하고 조용히 자리를 피했다.`);
+    events.push({ text: `[일상] 북쪽 출신 ${c1.name}은/는 시끌벅적한 자리를 뒤로하고 조용히 자리를 피했다.`, stat: "fatigueNum", amount: -3 });
   } else if (c1.nation === "서쪽") {
-    events.push(`[일상] 서쪽 출신 ${c1.name}은/는 도움을 받기보다 고장 난 구형 도구를 직접 두드려 고쳤다.`);
+    events.push({ text: `[일상] 서쪽 출신 ${c1.name}은/는 도움을 받기보다 고장 난 구형 도구를 직접 두드려 고쳤다.`, stat: "mentalNum", amount: 3 });
   } else if (c1.nation === "남쪽") {
-    events.push(`[일상] 남쪽 출신 ${c1.name}은/는 지나가는 이웃에게 붙임성 좋게 말을 걸었다.`);
+    events.push({ text: `[일상] 남쪽 출신 ${c1.name}은/는 지나가는 이웃에게 붙임성 좋게 말을 걸었다.`, stat: "mentalNum", amount: 3 });
+  }
+
+  // 특성에 따라 어울리는 일상 이벤트가 조금 더 자주 뽑히도록 후보를 추가한다
+  const traits = c1.traits || "";
+  if (traits.includes("잠의 달인")) {
+    events.push({ text: `[일상] ${c1.name}은/는 늘어지게 낮잠을 잤다.`, stat: "fatigueNum", amount: -6 });
+  }
+  if (traits.includes("먹보") || traits.includes("미식가")) {
+    events.push({ text: `[일상] ${c1.name}은/는 아껴뒀던 간식을 몰래 꺼내 먹었다.`, stat: "mentalNum", amount: 4 });
+  }
+  if (traits.includes("침착함")) {
+    events.push({ text: `[일상] ${c1.name}은/는 조용히 눈을 감고 명상하듯 시간을 보냈다.`, stat: "mentalNum", amount: 5 });
+  }
+  if (traits.includes("생활력") || traits.includes("부품 재활용") || traits.includes("폐품 감정")) {
+    events.push({ text: `[일상] ${c1.name}은/는 자잘한 살림살이를 손보며 하루를 보냈다.`, stat: "fatigueNum", amount: -4 });
   }
 
   let chosen = events[Math.floor(Math.random() * events.length)];
-  addLog(chosen);
+
+  let stats = calculateMaxStats(c1);
+  let statLabel = "";
+  if (chosen.stat === "fatigueNum") {
+    c1.fatigueNum = Math.max(0, Math.min(stats.maxFatigue, (c1.fatigueNum || 0) + chosen.amount));
+    statLabel = ` (피로 ${chosen.amount > 0 ? "+" : ""}${chosen.amount})`;
+  } else if (chosen.stat === "mentalNum") {
+    c1.mentalNum = Math.max(0, Math.min(stats.maxMental, (c1.mentalNum || 0) + chosen.amount));
+    statLabel = ` (정신력 ${chosen.amount > 0 ? "+" : ""}${chosen.amount})`;
+  }
+
+  addLog(chosen.text + statLabel);
   attemptCoupleBirth(chars);
   localStorage.setItem("characters", JSON.stringify(chars));
   renderResidentMemos(chars);
