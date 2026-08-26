@@ -386,6 +386,7 @@ function changeView(screenName) {
     updateBagDisplay();
     updateQuestUI();
     updateDayDisplay();
+    renderLogView(); // 화면이 보이는 상태에서 다시 계산해야 최근 기록으로 스크롤이 정상 이동함
   }
 }
 
@@ -540,17 +541,25 @@ function applyShadowInfluence(char) {
 function attemptShadowEncounter(char, fortune) {
   if (Math.random() >= 0.04) return "";
 
-  char.corruptionNum = Math.min(100, (char.corruptionNum || 0) + (Math.floor(Math.random() * 5) + 5));
+  const traits = char.traits || "";
+  let gain = Math.floor(Math.random() * 5) + 5;
+  if (traits.includes("불길한 직감")) gain = Math.max(1, Math.round(gain / 2));
+  char.corruptionNum = Math.min(100, (char.corruptionNum || 0) + gain);
 
   let msg = "";
   if (fortune.tier === "불운") {
     msg = ` 그림자와 마주쳐 다급히 몸을 피했다.`;
   } else {
-    msg = ` 그림자와 마주쳤으나 침착하게 피해 지나쳤다.`;
-    if (fortune.tier === "행운" && Math.random() < 0.3) {
+    msg = traits.includes("불길한 직감")
+      ? ` 불길한 기운을 미리 느끼고 그림자를 마주치기 전에 피했다.`
+      : ` 그림자와 마주쳤으나 침착하게 피해 지나쳤다.`;
+
+    const coreChance = 0.3;
+    const meatChance = traits.includes("도축과 손질") ? 0.35 : 0.15;
+    if (fortune.tier === "행운" && Math.random() < coreChance) {
       playerInventory.push("그림자 핵");
       msg += ` 그 자리에 남은 <b>[그림자 핵]</b>을 조심스레 회수했다.`;
-    } else if (Math.random() < 0.15) {
+    } else if (Math.random() < meatChance) {
       playerInventory.push("그림자 고기");
       msg += ` 흔적으로 남은 <b>[그림자 고기]</b>를 챙겼다.`;
     }
@@ -695,6 +704,25 @@ function triggerAdventure() {
     itemMsg += " 지참한 지도 덕분에 놓칠 뻔한 것을 발견했다.";
   }
 
+  // 특성이 탐험 결과에 살짝 관여한다
+  const advTraits = activeRes.traits || "";
+  let traitMsg = "";
+  if (advTraits.includes("길 찾기")) {
+    activeRes.fatigueNum = Math.max(0, activeRes.fatigueNum - 3);
+    traitMsg += " 길눈이 밝아 지름길로 다녀왔다.";
+  }
+  if (advTraits.includes("동물과의 교감")) {
+    activeRes.fatigueNum = Math.max(0, activeRes.fatigueNum - 2);
+    traitMsg += " 낯선 동물이 은근슬쩍 길을 알려주는 듯했다.";
+  }
+  if (advTraits.includes("응급 처치")) {
+    activeRes.healthNum = Math.min(stats.maxHealth, (activeRes.healthNum || 0) + 3);
+    traitMsg += " 능숙하게 스스로를 돌보았다.";
+  }
+  if (advTraits.includes("폐품 감정") || advTraits.includes("부품 재활용") || advTraits.includes("약초 식별")) {
+    rewardChance = Math.min(1, rewardChance + 0.1);
+  }
+
   let bonusMsg = "";
   const brokenRoll = Math.random();
   if (brokenRoll < 0.015) {
@@ -708,7 +736,7 @@ function triggerAdventure() {
   const shadowMsg = applyShadowExposure(activeRes, weatherObj.type);
   const encounterMsg = attemptShadowEncounter(activeRes, fortune);
 
-  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${bonusMsg}${shadowMsg}${encounterMsg}`);
+  addLog(`[탐험] ${logText}${fortuneMsg}${itemMsg}${traitMsg}${bonusMsg}${shadowMsg}${encounterMsg}`);
 
   if (Math.random() < rewardChance) {
     let pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle" && itemDatabase[k].type !== "special");
@@ -825,13 +853,19 @@ function triggerOutingStep2() {
         emojiBox.textContent = "🍽️";
 
         let foodGain = 45;
+        let traitDineMsg = "";
         if (activeRes) {
           let stats = calculateMaxStats(activeRes);
+          const dineTraits = activeRes.traits || "";
+          if (dineTraits.includes("먹보") || dineTraits.includes("미식가")) {
+            foodGain += 10;
+            traitDineMsg = " 유독 맛있게 먹어치웠다.";
+          }
           activeRes.hungerNum = Math.min(stats.maxHunger, (activeRes.hungerNum || 0) + foodGain);
         }
 
         resultBox.textContent = `${activeName}은/는 ${selectedMenu}을/를 먹고 허기를 채웠다. (-${price} 리움)`;
-        addLog(`[외식] ${activeName}은/는 식당에서 [${selectedMenu}]을/를 먹고 ${price} 리움을 지불했다. (허기 +${foodGain})`);
+        addLog(`[외식] ${activeName}은/는 식당에서 [${selectedMenu}]을/를 먹고 ${price} 리움을 지불했다.${traitDineMsg} (허기 +${foodGain})`);
       } else {
         emojiBox.textContent = "💸";
         resultBox.textContent = `${activeName}은/는 소지금이 부족해 외식을 포기했다.`;
@@ -952,6 +986,12 @@ function triggerQuickNews() {
   }
   activeRes.fatigueNum = Math.max(0, Math.min(stats.maxFatigue, (activeRes.fatigueNum || 0) + fatigueChange));
 
+  let traitNewsMsg = "";
+  if ((activeRes.traits || "").includes("희망의 소리")) {
+    activeRes.mentalNum = Math.min(stats.maxMental, (activeRes.mentalNum || 0) + 4);
+    traitNewsMsg = " 힘이 되는 소식을 마음에 담아두었다. (정신력 +4)";
+  }
+
   let socialLog = "";
   if (chars.length >= 2 && Math.random() < 0.7) {
     let idx1 = Math.floor(Math.random() * chars.length);
@@ -983,7 +1023,7 @@ function triggerQuickNews() {
   renderResidentMemos(chars);
 
   resultBox.textContent = `${activeRes.name}은/는 ${selectedMedia}을/를 읽었다.`;
-  addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${socialLog}`);
+  addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${traitNewsMsg}${socialLog}`);
 }
 
 // ==========================================================
