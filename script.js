@@ -1029,6 +1029,57 @@ function triggerQuickNews() {
 // ==========================================================
 // 일상 이벤트 자동 생성 (재생/자동 행동 공용, 하루를 진행시키지는 않음)
 // ==========================================================
+// 상호 지명된 관계일 때만 관계 상호작용 멘트 후보를 만든다 (지명 대상이 없으면 빈 배열)
+function getRelationshipEventCandidates(c1, chars) {
+  if (!c1.targetName) return [];
+  const partner = chars.find(c => c.name === c1.targetName);
+  if (!partner) return [];
+
+  const rel = c1.relation;
+  let lines = [];
+
+  if (rel === "부모" || rel === "자식") {
+    const parent = rel === "부모" ? c1 : partner;
+    const child = rel === "부모" ? partner : c1;
+    lines = [
+      `[관계] ${parent.name}은/는 잠 못 드는 ${child.name}을/를 위해 나즈막히 자장가를 흥얼거렸다.`,
+      `[관계] ${parent.name}은/는 ${child.name}에게 오늘 있었던 일을 조곤조곤 물었다.`,
+      `[관계] ${child.name}은/는 ${parent.name} 몰래 만든 것을 수줍게 건넸다.`
+    ];
+  } else if (rel === "연인") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 나란히 앉아 노을을 바라보았다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}를 위해 작은 선물을 몰래 준비했다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 서로의 하루 이야기를 나누며 웃었다.`
+    ];
+  } else if (rel === "친구") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 실없는 농담을 주고받으며 시간을 보냈다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}에게 사소한 고민을 털어놓았다.`
+    ];
+  } else if (rel === "형제자매") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 어릴 적 이야기를 하며 한참을 웃었다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}의 물건을 몰래 빌렸다가 들켜 한소리 들었다.`
+    ];
+  } else if (rel === "보호자와 피보호자") {
+    lines = [
+      `[관계] ${c1.name}은/는 ${partner.name}가 다치지 않았는지 꼼꼼히 살폈다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 나란히 앉아 잠시 아무 말 없이 시간을 보냈다.`
+    ];
+  } else if (rel === "원수" || rel === "경쟁자") {
+    lines = [`[관계] ${c1.name}과 ${partner.name}는 마주치자마자 날선 말을 주고받았다.`];
+  } else {
+    return [];
+  }
+
+  const isNegative = (rel === "원수" || rel === "경쟁자");
+  const amount = isNegative ? -3 : 3;
+  const chosenText = lines[Math.floor(Math.random() * lines.length)];
+
+  return [{ text: chosenText, stat: "mentalNum", amount, partner, partnerStat: "mentalNum", partnerAmount: amount }];
+}
+
 // 특성이 많은 주민일수록 일상 이벤트에 조금 더 자주 등장한다 (소소한 가중치)
 function pickWeightedCharacter(chars) {
   let weighted = chars.map(c => ({
@@ -1112,6 +1163,9 @@ function generateRandomDailyEvent() {
     events.push({ text: `[일상] ${c1.name}은/는 자잘한 살림살이를 손보며 하루를 보냈다.`, stat: "fatigueNum", amount: -4 });
   }
 
+  // 상호 지명된 관계가 있으면 관계 상호작용 멘트도 후보에 섞는다
+  events = events.concat(getRelationshipEventCandidates(c1, chars));
+
   let chosen = events[Math.floor(Math.random() * events.length)];
 
   let stats = calculateMaxStats(c1);
@@ -1122,6 +1176,16 @@ function generateRandomDailyEvent() {
   } else if (chosen.stat === "mentalNum") {
     c1.mentalNum = Math.max(0, Math.min(stats.maxMental, (c1.mentalNum || 0) + chosen.amount));
     statLabel = ` (정신력 ${chosen.amount > 0 ? "+" : ""}${chosen.amount})`;
+  }
+
+  // 관계 상호작용 이벤트는 상대방에게도 같은 효과를 적용한다
+  if (chosen.partner && chosen.partnerStat) {
+    let pStats = calculateMaxStats(chosen.partner);
+    if (chosen.partnerStat === "fatigueNum") {
+      chosen.partner.fatigueNum = Math.max(0, Math.min(pStats.maxFatigue, (chosen.partner.fatigueNum || 0) + chosen.partnerAmount));
+    } else if (chosen.partnerStat === "mentalNum") {
+      chosen.partner.mentalNum = Math.max(0, Math.min(pStats.maxMental, (chosen.partner.mentalNum || 0) + chosen.partnerAmount));
+    }
   }
 
   const shadowMsg = applyShadowInfluence(c1);
