@@ -188,10 +188,13 @@ const peacefulPhrases = [
   "서로의 입장을 확인한 뒤 화해했습니다."
 ];
 
-const relationChangePhrases = [
+const positiveChangePhrases = [
   "가까워졌습니다.",
   "서로에게 조금 더 친밀해졌습니다.",
-  "친구가 되었습니다.",
+  "친구가 되었습니다."
+];
+
+const negativeChangePhrases = [
   "경쟁 관계가 되었습니다.",
   "사이가 멀어졌습니다.",
   "한동안 서로를 피했습니다.",
@@ -213,7 +216,36 @@ function advanceDay() {
   worldDay++;
   addLog(`[날짜] ${worldDay}일째 아침이 밝았다.`);
   updateDayDisplay();
+  checkBirthdays();
   checkEventCard();
+}
+
+// 세계 날짜를 365일 주기로 취급해 생일을 확인한다 (등록 시 자동으로 배정된 생일 기준)
+function checkBirthdays() {
+  let chars = JSON.parse(localStorage.getItem("characters")) || [];
+  if (chars.length === 0) return;
+
+  const cycleDay = ((worldDay - 1) % 365) + 1;
+  let changed = false;
+
+  chars.forEach(c => {
+    if (!c.name || c.birthDay !== cycleDay) return;
+    changed = true;
+
+    const stats = calculateMaxStats(c);
+    c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 8);
+    addLog(`🎂 [생일] 오늘은 ${c.name}의 생일이다. (정신력 +8)`);
+
+    const partner = chars.find(p => p.name && (p.targetName === c.name || c.targetName === p.name) && p.name !== c.name);
+    if (partner) {
+      addLog(`🎂 [생일] ${partner.name}이/가 ${c.name}의 생일을 축하해주었다.`);
+    }
+  });
+
+  if (changed) {
+    localStorage.setItem("characters", JSON.stringify(chars));
+    renderResidentMemos(chars);
+  }
 }
 
 // 3~7일 간격으로 무작위 사건 카드가 발생한다 (담담한 관찰형 톤 유지, 즉각적 위험은 소소하게)
@@ -697,7 +729,8 @@ function attemptCoupleBirth(chars) {
     mentalNum: babyStats.maxMental,
     fatigueNum: 0,
     hungerNum: babyStats.maxHunger,
-    corruptionNum: 0
+    corruptionNum: 0,
+    birthDay: Math.floor(Math.random() * 365) + 1
   };
   chars.push(babyFull);
 
@@ -1092,10 +1125,11 @@ function triggerQuickNews() {
       let isConflict = Math.random() < 0.45;
       if (isConflict) {
         let confPhrase = conflictPhrases[Math.floor(Math.random() * conflictPhrases.length)];
-        socialLog = `<br>💬 [관계] ${c1.name}과/와 ${c2.name}: ${confPhrase}`;
+        let changePhrase = negativeChangePhrases[Math.floor(Math.random() * negativeChangePhrases.length)];
+        socialLog = `<br>💬 [관계] ${c1.name}과/와 ${c2.name}: ${confPhrase} 두 사람은 ${changePhrase}`;
       } else {
         let peacePhrase = peacefulPhrases[Math.floor(Math.random() * peacefulPhrases.length)];
-        let changePhrase = relationChangePhrases[Math.floor(Math.random() * relationChangePhrases.length)];
+        let changePhrase = positiveChangePhrases[Math.floor(Math.random() * positiveChangePhrases.length)];
         socialLog = `<br>🤝 [관계] ${c1.name}과/와 ${c2.name}: ${peacePhrase} 두 사람은 ${changePhrase}`;
       }
     }
@@ -1673,7 +1707,7 @@ function saveCharacters(isSilent = false) {
                 existingChars.find(c => !c.charId && c.name === name && c.bloodType === bloodType && c.zodiac === zodiac);
 
     let basePower, baseAgility, baseIntel, baseLuck, assignedTraits;
-    let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, maxChildren, childCount;
+    let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay, maxChildren, childCount;
 
     const baseInfo = { charId, name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage, relation, targetName };
     const stats = calculateMaxStats(baseInfo);
@@ -1689,6 +1723,7 @@ function saveCharacters(isSilent = false) {
       fatigueNum = found.fatigueNum ?? 50;
       hungerNum = found.hungerNum ?? stats.maxHunger;
       corruptionNum = found.corruptionNum ?? 0;
+      birthDay = found.birthDay ?? (Math.floor(Math.random() * 365) + 1);
       maxChildren = found.maxChildren;
       childCount = found.childCount;
     } else {
@@ -1712,13 +1747,14 @@ function saveCharacters(isSilent = false) {
       fatigueNum = 50;
       hungerNum = stats.maxHunger;
       corruptionNum = 0;
+      birthDay = Math.floor(Math.random() * 365) + 1;
     }
 
     characters.push({
       ...baseInfo,
       power: basePower, agility: baseAgility, intel: baseIntel, luck: baseLuck,
       traits: assignedTraits,
-      healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum,
+      healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay,
       maxChildren, childCount
     });
   });
