@@ -156,6 +156,17 @@ const worldMediaList = [
   "아카데미 기숙사 벌점 사례집", "인간과 괴물, 모두의 생활 정보 잡지"
 ];
 
+// 특정 주민이 아니라 세계 전체에 걸린 소식 (날씨/의뢰와 무관, 가끔 소식 읽을 때 함께 붙는다)
+const worldAnnouncements = [
+  "오늘 안전지대 광장에서 작은 장이 열렸다.",
+  "북쪽에서 한파주의보가 내려왔다는 소식이 돌았다.",
+  "동쪽 관문의 통행 검문이 잠시 강화되었다고 한다.",
+  "남쪽 항구에 낯선 교역선이 들어왔다는 소문이 돌았다.",
+  "서쪽 채석장에서 작은 낙석 사고가 있었다는 이야기가 들렸다.",
+  "그림자 활동이 잦아졌으니 외곽 출입을 주의하라는 공고가 붙었다.",
+  "다음 배급 일정이 게시판에 새로 붙었다."
+];
+
 const conflictPhrases = [
   "사회 문제에 대한 의견이 달라 이야기를 나누다 다투었습니다.",
   "서로 다른 가치관을 두고 의견을 주고받았습니다.",
@@ -1058,6 +1069,13 @@ function triggerQuickNews() {
     traitNewsMsg = " 힘이 되는 소식을 마음에 담아두었다. (정신력 +4)";
   }
 
+  // 특정 인물이 아니라 세계 전체에 걸린 소식이 가끔 함께 실린다
+  let announcementMsg = "";
+  if (Math.random() < 0.25) {
+    const note = worldAnnouncements[Math.floor(Math.random() * worldAnnouncements.length)];
+    announcementMsg = `<br>📢 [공지] ${note}`;
+  }
+
   let socialLog = "";
   if (chars.length >= 2 && Math.random() < 0.7) {
     let idx1 = Math.floor(Math.random() * chars.length);
@@ -1089,7 +1107,7 @@ function triggerQuickNews() {
   renderResidentMemos(chars);
 
   resultBox.textContent = `${activeRes.name}은/는 ${selectedMedia}을/를 읽었다.`;
-  addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${traitNewsMsg}${socialLog}`);
+  addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${traitNewsMsg}${socialLog}${announcementMsg}`);
 }
 
 // ==========================================================
@@ -1110,7 +1128,7 @@ function getRelationshipEventCandidates(c1, chars) {
     lines = [
       `[관계] ${parent.name}은/는 잠 못 드는 ${child.name}을/를 위해 나즈막히 자장가를 흥얼거렸다.`,
       `[관계] ${parent.name}은/는 ${child.name}에게 오늘 있었던 일을 조곤조곤 물었다.`,
-      `[관계] ${child.name}은/는 서투르게 만든 것을 ${parent.name}에게 건네며 멋쩍게 웃었다.`
+      `[관계] ${child.name}은/는 서투르게 만든 것을 ${parent.name}에게 건네며 해맑게 웃었다.`
     ];
   } else if (rel === "연인") {
     lines = [
