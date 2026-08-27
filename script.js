@@ -13,6 +13,7 @@ let isAutoRoutineOn = false;
 
 let currentQuest = null;
 let worldDay = 1;
+let nextEventCardDay = 0; // 3~7일 간격으로 무작위 사건 카드 발생
 const maxCharacters = 6;
 
 // 실제 시간 경과 시뮬레이션 설정 (현실 3시간 = 세계 1일, 한 번에 최대 7일치까지만 처리)
@@ -201,6 +202,68 @@ function advanceDay() {
   worldDay++;
   addLog(`[날짜] ${worldDay}일째 아침이 밝았다.`);
   updateDayDisplay();
+  checkEventCard();
+}
+
+// 3~7일 간격으로 무작위 사건 카드가 발생한다 (담담한 관찰형 톤 유지, 즉각적 위험은 소소하게)
+function checkEventCard() {
+  if (nextEventCardDay <= 0) {
+    nextEventCardDay = worldDay + Math.floor(Math.random() * 5) + 3;
+    return;
+  }
+  if (worldDay < nextEventCardDay) return;
+
+  let chars = JSON.parse(localStorage.getItem("characters")) || [];
+  if (chars.length === 0 || !chars.some(c => c.name)) {
+    nextEventCardDay = worldDay + Math.floor(Math.random() * 5) + 3;
+    return;
+  }
+
+  const eventCards = [
+    () => {
+      const pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle");
+      const item = pool[Math.floor(Math.random() * pool.length)];
+      playerInventory.push(item);
+      return `🎴 [사건] 안전지대 입구에 낯선 보급 상자가 놓여 있었다. 안에는 <b>[${getItemDisplayString(item)}]</b>이 들어 있었다.`;
+    },
+    () => `🎴 [사건] 낡은 라디오에서 잡음 섞인 신호가 잠시 잡혔다가 이내 사라졌다.`,
+    () => {
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      const stats = calculateMaxStats(c);
+      c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 6);
+      return `🎴 [사건] ${c.name}은/는 낯선 이가 두고 간 낡은 사진 한 장을 주웠다. 누구의 것인지는 알 수 없었다. (정신력 +6)`;
+    },
+    () => {
+      chars.forEach(c => { c.fatigueNum = Math.max(0, (c.fatigueNum || 0) - 5); });
+      return `🎴 [사건] 며칠간 이어진 가뭄 끝에 단비가 내렸다. 모두가 오랜만에 편히 잠들었다. (전원 피로 -5)`;
+    },
+    () => {
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      c.corruptionNum = Math.min(100, (c.corruptionNum || 0) + 4);
+      return `🎴 [사건] 며칠 조용하던 그림자의 기운이 다시 짙어졌다. (오염도 +4)`;
+    },
+    () => {
+      chars.forEach(c => {
+        const stats = calculateMaxStats(c);
+        c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 4);
+      });
+      return `🎴 [사건] 오랜만에 안전지대 사람들이 모여 조촐한 잔치를 열었다. (전원 정신력 +4)`;
+    },
+    () => {
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      c.healthNum = Math.max(0, (c.healthNum || 0) - 5);
+      return `🎴 [사건] ${c.name}은/는 사소한 부주의로 가벼운 찰과상을 입었다. 대단한 상처는 아니었다. (체력 -5)`;
+    }
+  ];
+
+  const chosen = eventCards[Math.floor(Math.random() * eventCards.length)];
+  addLog(chosen());
+
+  localStorage.setItem("characters", JSON.stringify(chars));
+  renderResidentMemos(chars);
+  updateBagDisplay();
+
+  nextEventCardDay = worldDay + Math.floor(Math.random() * 5) + 3;
 }
 
 function updateDayDisplay() {
@@ -369,6 +432,9 @@ function switchMobileTab(tab) {
   });
   const activeBtn = document.getElementById(btnMap[tab]);
   if (activeBtn) activeBtn.classList.add("active-tab");
+
+  // 일지 탭이 실제로 보이는 상태가 된 뒤에야 스크롤 위치가 정확히 계산된다
+  if (tab === "log") renderLogView();
 }
 
 function changeView(screenName) {
@@ -1044,7 +1110,7 @@ function getRelationshipEventCandidates(c1, chars) {
     lines = [
       `[관계] ${parent.name}은/는 잠 못 드는 ${child.name}을/를 위해 나즈막히 자장가를 흥얼거렸다.`,
       `[관계] ${parent.name}은/는 ${child.name}에게 오늘 있었던 일을 조곤조곤 물었다.`,
-      `[관계] ${child.name}은/는 ${parent.name} 몰래 만든 것을 수줍게 건넸다.`
+      `[관계] ${child.name}은/는 서투르게 만든 것을 ${parent.name}에게 건네며 멋쩍게 웃었다.`
     ];
   } else if (rel === "연인") {
     lines = [
@@ -1490,10 +1556,22 @@ function resetCharacters() {
   location.reload();
 }
 
+// 이름도 혈액형도 아직 정해지지 않은 "완전히 빈" 카드만 찾는다 (조금이라도 입력된 카드는 절대 건드리지 않음)
+function findEmptyCard() {
+  const cards = document.querySelectorAll(".character-card");
+  for (let card of cards) {
+    const nameVal = card.querySelector(".characterNameInput").value.trim();
+    if (!nameVal && !card.dataset.bloodType) return card;
+  }
+  return null;
+}
+
 function randomizeNewCharacter() {
   const container = document.getElementById("characterContainer");
+  const emptyCard = findEmptyCard();
   const currentCards = container.querySelectorAll(".character-card");
-  if (currentCards.length >= maxCharacters) {
+
+  if (!emptyCard && currentCards.length >= maxCharacters) {
     alert("주민은 최대 " + maxCharacters + "명까지 만들 수 있습니다.");
     return;
   }
@@ -1516,7 +1594,17 @@ function randomizeNewCharacter() {
     relation: randomRelation
   };
 
-  addCharacter(savedData);
+  if (emptyCard) {
+    // 빈 카드를 그대로 재사용해서 채운다 (새 카드를 만들지 않음)
+    emptyCard.innerHTML = buildCardMarkup(savedData);
+    emptyCard.dataset.charId = generateCharId();
+    setupCardEvents(emptyCard, savedData);
+    updateCardTitlesAndCount();
+    refreshAllTargetOptions();
+  } else {
+    addCharacter(savedData);
+  }
+
   addLog(`[주민 등록] 무작위 주민 [${randomName}](${randomSpecies}, ${randomStage}, ${randomNation})이/가 새로 등록되었습니다.`);
   saveCharacters();
 }
@@ -1758,6 +1846,7 @@ function saveGameData() {
   localStorage.setItem("memorialList", JSON.stringify(memorialList));
   localStorage.setItem("currentQuest", JSON.stringify(currentQuest));
   localStorage.setItem("worldDay", worldDay);
+  localStorage.setItem("nextEventCardDay", nextEventCardDay);
   localStorage.setItem("lastActiveTimestamp", Date.now().toString());
 }
 
@@ -1767,7 +1856,7 @@ function saveGameData() {
 function exportGameData() {
   const data = {
     characters: JSON.parse(localStorage.getItem("characters")) || [],
-    playerMoney, playerInventory, eventLogsData, memorialList, currentQuest, worldDay,
+    playerMoney, playerInventory, eventLogsData, memorialList, currentQuest, worldDay, nextEventCardDay,
     lastActiveTimestamp: localStorage.getItem("lastActiveTimestamp")
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1797,6 +1886,7 @@ function importGameData(event) {
       localStorage.setItem("memorialList", JSON.stringify(data.memorialList || []));
       localStorage.setItem("currentQuest", JSON.stringify(data.currentQuest || null));
       localStorage.setItem("worldDay", data.worldDay || 1);
+      localStorage.setItem("nextEventCardDay", data.nextEventCardDay || 0);
       if (data.lastActiveTimestamp) localStorage.setItem("lastActiveTimestamp", data.lastActiveTimestamp);
 
       alert("불러오기 완료! 페이지를 새로고침합니다.");
@@ -1818,6 +1908,9 @@ function loadGameData() {
   const savedDay = localStorage.getItem("worldDay");
   if (savedDay !== null) worldDay = parseInt(savedDay);
   updateDayDisplay();
+
+  const savedNextEvent = localStorage.getItem("nextEventCardDay");
+  nextEventCardDay = savedNextEvent !== null ? parseInt(savedNextEvent) : 0;
 
   const savedLogs = localStorage.getItem("eventLogsData");
   if (savedLogs) {
