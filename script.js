@@ -390,11 +390,25 @@ function useInventoryItem(index) {
   if (!itemInfo) return;
 
   let chars = JSON.parse(localStorage.getItem("characters")) || [];
-  if (chars.length === 0) {
-    alert("회복시킬 주민이 없습니다!");
+  let validChars = chars.filter(c => c.name);
+  if (validChars.length === 0) {
+    alert("사용시킬 주민이 없습니다!");
     return;
   }
-  let targetChar = chars[0];
+
+  let targetChar = validChars[0];
+  if (validChars.length > 1) {
+    const nameList = validChars.map(c => c.name).join(", ");
+    const input = prompt(`누구에게 [${itemName}]을(를) 사용할까요?\n(${nameList})`, validChars[0].name);
+    if (input === null) return; // 취소하면 사용하지 않음
+    const found = validChars.find(c => c.name === input.trim());
+    if (!found) {
+      alert("입력한 이름의 주민을 찾을 수 없습니다.");
+      return;
+    }
+    targetChar = found;
+  }
+
   let stats = calculateMaxStats(targetChar);
 
   if (itemInfo.type === "food") {
