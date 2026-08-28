@@ -188,17 +188,17 @@ const peacefulPhrases = [
   "서로의 입장을 확인한 뒤 화해했습니다."
 ];
 
+// 실제 relation 데이터를 바꾸지는 않는 순수 서술용 문구 (단정적인 "관계가 되었다" 표현은 피함)
 const positiveChangePhrases = [
-  "가까워졌습니다.",
-  "서로에게 조금 더 친밀해졌습니다.",
-  "친구가 되었습니다."
+  "조금 가까워진 듯했다.",
+  "서로에게 한결 편해진 눈치였다.",
+  "한동안 도타운 사이로 지낼 듯 보였다."
 ];
 
 const negativeChangePhrases = [
-  "경쟁 관계가 되었습니다.",
-  "사이가 멀어졌습니다.",
-  "한동안 서로를 피했습니다.",
-  "더 이상 친구/부부/연인으로 지내지 않기로 했습니다."
+  "조금 서먹해진 듯했다.",
+  "한동안 서로를 데면데면 대했다.",
+  "예전 같지 않은 분위기가 느껴졌다."
 ];
 
 const adventureTemplates = [
@@ -328,8 +328,10 @@ function processOfflineElapsedTime() {
       addLog(`[시간 경과] 자리를 비운 사이 ${elapsedDays}일이 흘렀습니다.`);
 
       for (let i = 0; i < cappedDays; i++) {
-        generateRandomDailyEvent();
         worldDay++;
+        checkBirthdays();
+        checkEventCard();
+        generateRandomDailyEvent();
       }
       updateDayDisplay();
 
