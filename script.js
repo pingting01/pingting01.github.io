@@ -1825,6 +1825,7 @@ function renderResidentMemos(characters) {
 
     let relText = char.targetName ? `<b>${char.targetName}</b>의 ${char.relation || '지인'}` : (char.relation && char.relation !== "지인" ? char.relation : "");
     let childText = (char.maxChildren) ? `<p style="font-size:11px; color:#7b68ee;">👶 자녀 ${char.childCount || 0} / ${char.maxChildren}명</p>` : "";
+    let birthText = char.birthDay ? `<p style="font-size:11px; color:#a0724f;">🎂 생일: ${char.birthDay}일째</p>` : "";
 
     const infoLine = [char.species || '인간', char.lifeStage || '청년', char.bloodType ? char.bloodType + "형" : null, char.zodiac || null, char.mbti || null]
       .filter(Boolean).join(" / ");
@@ -1838,6 +1839,7 @@ function renderResidentMemos(characters) {
         <p><b>선호 식성:</b> ${char.foodPref || "미선택"}</p>
         <p><b>생존 특성:</b> <span style="color: #d97706; font-weight: bold;">${char.traits || "없음"}</span></p>
         ${childText}
+        ${birthText}
         <hr style="margin: 5px 0; border-color: #f0e6d2;">
         <p style="font-size: 12px;"><b>능력치:</b> 힘 ${power} | 민첩 ${agility} | 지능 ${intel} | 행운 ${luck}</p>
 
