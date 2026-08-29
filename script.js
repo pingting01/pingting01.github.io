@@ -126,13 +126,13 @@ const nationKeys = Object.keys(nationData);
 const sampleNames = ["철수", "영희", "민수", "지은", "서준", "하은", "도윤", "서윤"];
 const speciesList = ["인간", "괴물", "혼혈"];
 const lifeStagesList = ["어린이", "청소년", "청년", "중년", "노년"];
-const relationList = ["지인", "부모", "자식", "보호자와 피보호자", "형제자매", "친척", "연인", "친구", "동료", "은인", "원수", "경쟁자", "전 연인", "전 배우자"];
+const relationList = ["지인", "부모", "자식", "보호자와 피보호자", "형제자매", "친척", "연인", "배우자", "친구", "동료", "은인", "원수", "경쟁자", "전 연인", "전 배우자"];
 
 // 관계 지정 시 상대방에게 자동으로 부여되는 반대(상호) 관계
 const relationInverseMap = {
   "지인": "지인", "부모": "자식", "자식": "부모",
   "보호자와 피보호자": "보호자와 피보호자", "형제자매": "형제자매", "친척": "친척",
-  "연인": "연인", "친구": "친구", "동료": "동료", "은인": "은인",
+  "연인": "연인", "배우자": "배우자", "친구": "친구", "동료": "동료", "은인": "은인",
   "원수": "원수", "경쟁자": "경쟁자", "전 연인": "전 연인", "전 배우자": "전 배우자"
 };
 
@@ -703,11 +703,11 @@ function attemptCoupleBirth(chars) {
   chars.forEach(c => {
     if (!Array.isArray(c.relationships)) return;
     c.relationships.forEach(r => {
-      if (r.relation !== "연인") return;
+      if (r.relation !== "연인" && r.relation !== "배우자") return;
       const partner = chars.find(p => p.charId === r.targetCharId);
       if (!partner) return;
       const mutual = Array.isArray(partner.relationships) &&
-        partner.relationships.some(pr => pr.targetCharId === c.charId && pr.relation === "연인");
+        partner.relationships.some(pr => pr.targetCharId === c.charId && pr.relation === r.relation);
       if (mutual && stageOk(c) && stageOk(partner) && c.charId < partner.charId) {
         couples.push([c, partner]);
       }
@@ -1218,6 +1218,12 @@ function getRelationshipEventCandidates(c1, chars) {
       `[관계] ${c1.name}은/는 ${partner.name}를 위해 작은 선물을 몰래 준비했다.`,
       `[관계] ${c1.name}과 ${partner.name}는 서로의 하루 이야기를 나누며 웃었다.`
     ];
+  } else if (rel === "배우자") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 저녁을 함께 차려 먹었다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}의 잔소리를 못 이기는 척 들어주었다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 별일 아닌 하루를 나란히 앉아 흘려보냈다.`
+    ];
   } else if (rel === "친구") {
     lines = [
       `[관계] ${c1.name}과 ${partner.name}는 실없는 농담을 주고받으며 시간을 보냈다.`,
@@ -1243,7 +1249,10 @@ function getRelationshipEventCandidates(c1, chars) {
   const amount = isNegative ? -3 : 3;
   const chosenText = lines[Math.floor(Math.random() * lines.length)];
 
-  return [{ text: chosenText, stat: "mentalNum", amount, partner, partnerStat: "mentalNum", partnerAmount: amount }];
+  return [{
+    text: chosenText, stat: "mentalNum", amount, partner, partnerStat: "mentalNum", partnerAmount: amount,
+    relEntry, affinityDelta: amount
+  }];
 }
 
 // 특성이 많은 주민일수록 일상 이벤트에 조금 더 자주 등장한다 (소소한 가중치)
@@ -1355,9 +1364,31 @@ function generateRandomDailyEvent() {
     }
   }
 
+  // 관계 호감도(affinity) 반영 - 상호작용이 쌓이면 관계가 자연스럽게 변화한다
+  let relationChangeMsg = "";
+  if (chosen.relEntry && chosen.affinityDelta !== undefined && chosen.partner) {
+    chosen.relEntry.affinity = Math.max(0, Math.min(100, (chosen.relEntry.affinity ?? 50) + chosen.affinityDelta));
+    const reciprocal = Array.isArray(chosen.partner.relationships)
+      ? chosen.partner.relationships.find(pr => pr.targetCharId === c1.charId)
+      : null;
+    if (reciprocal) reciprocal.affinity = Math.max(0, Math.min(100, (reciprocal.affinity ?? 50) + chosen.affinityDelta));
+
+    // 연인 관계의 호감도가 충분히 쌓이면 배우자로 자동 승격
+    if (chosen.relEntry.relation === "연인" && chosen.relEntry.affinity >= 85) {
+      chosen.relEntry.relation = "배우자";
+      if (reciprocal) reciprocal.relation = "배우자";
+      relationChangeMsg = `<br>💍 [관계] ${c1.name}과 ${chosen.partner.name}는 서로를 배우자로 여기기 시작했다.`;
+    }
+
+    // 친구 관계인데 호감도가 낮으면, 관계 자체는 유지한 채 가끔 소원해지는 문구만 나온다
+    if (chosen.relEntry.relation === "친구" && chosen.relEntry.affinity <= 20 && Math.random() < 0.3) {
+      relationChangeMsg = `<br>[관계] ${c1.name}과 ${chosen.partner.name}는 요즘 들어 조금 뜸해진 사이가 되었다.`;
+    }
+  }
+
   const shadowMsg = applyShadowInfluence(c1);
 
-  addLog(chosen.text + statLabel + shadowMsg);
+  addLog(chosen.text + statLabel + shadowMsg + relationChangeMsg);
   attemptCoupleBirth(chars);
   localStorage.setItem("characters", JSON.stringify(chars));
   renderResidentMemos(chars);
@@ -1749,8 +1780,9 @@ function syncMutualRelations(characters) {
       const existing = target.relationships.find(tr => tr.targetCharId === c.charId);
       if (existing) {
         existing.relation = inv;
+        if (typeof r.affinity === "number") existing.affinity = r.affinity;
       } else {
-        target.relationships.push({ targetCharId: c.charId, relation: inv });
+        target.relationships.push({ targetCharId: c.charId, relation: inv, affinity: r.affinity ?? 50 });
       }
     });
   });
@@ -1759,6 +1791,7 @@ function syncMutualRelations(characters) {
 function saveCharacters(isSilent = false) {
   const characters = [];
   const cardRelationshipsRaw = []; // 카드 순서와 1:1로 대응하는 관계 후보 목록 (이름 기반, 아직 charId로 변환 전)
+  const foundRefs = []; // 카드 순서와 1:1로 대응하는 기존 저장 데이터(호감도 이월용)
   let existingChars = JSON.parse(localStorage.getItem("characters")) || [];
 
   document.querySelectorAll(".character-card").forEach(function(card) {
@@ -1788,6 +1821,7 @@ function saveCharacters(isSilent = false) {
     // 고유 ID로 우선 식별하고, ID가 없던 예전 저장 데이터는 이름+혈액형+별자리로 한 번만 매칭
     let found = existingChars.find(c => c.charId === charId) ||
                 existingChars.find(c => !c.charId && c.name === name && c.bloodType === bloodType && c.zodiac === zodiac);
+    foundRefs.push(found || null);
 
     let basePower, baseAgility, baseIntel, baseLuck, assignedTraits;
     let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay, maxChildren, childCount;
@@ -1849,9 +1883,16 @@ function saveCharacters(isSilent = false) {
 
   characters.forEach((c, i) => {
     const rows = cardRelationshipsRaw[i] || [];
+    const prevRels = (foundRefs[i] && Array.isArray(foundRefs[i].relationships)) ? foundRefs[i].relationships : [];
     c.relationships = rows
-      .map(r => ({ targetCharId: nameToCharId[r.targetName], relation: r.relation }))
-      .filter(r => r.targetCharId && r.targetCharId !== c.charId);
+      .map(r => {
+        const targetCharId = nameToCharId[r.targetName];
+        if (!targetCharId || targetCharId === c.charId) return null;
+        const prev = prevRels.find(pr => pr.targetCharId === targetCharId);
+        const affinity = (prev && typeof prev.affinity === "number") ? prev.affinity : 50;
+        return { targetCharId, relation: r.relation, affinity };
+      })
+      .filter(Boolean);
   });
 
   syncMutualRelations(characters);
@@ -1895,7 +1936,7 @@ function renderResidentMemos(characters) {
     let huPct = (hungerNum / stats.maxHunger) * 100;
     let coPct = corruptionNum; // 오염도는 0~100 고정 범위
 
-    const hasLoverRelation = Array.isArray(char.relationships) && char.relationships.some(r => r.relation === "연인");
+    const hasLoverRelation = Array.isArray(char.relationships) && char.relationships.some(r => r.relation === "연인" || r.relation === "배우자");
     let stageWarning = "";
     if ((char.lifeStage === "어린이" || char.lifeStage === "청소년") && hasLoverRelation) {
       stageWarning = "<br><span style='color:red; font-weight:bold;'>⚠️ 제약: 어린이/청소년은 연인 관계 불가!</span>";
