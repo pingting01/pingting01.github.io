@@ -236,7 +236,9 @@ function checkBirthdays() {
     c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 8);
     addLog(`🎂 [생일] 오늘은 ${c.name}의 생일이다. (정신력 +8)`);
 
-    const partner = chars.find(p => p.name && (p.targetName === c.name || c.targetName === p.name) && p.name !== c.name);
+    const partner = Array.isArray(c.relationships) && c.relationships.length > 0
+      ? chars.find(p => p.charId === c.relationships[0].targetCharId)
+      : null;
     if (partner) {
       addLog(`🎂 [생일] ${partner.name}이/가 ${c.name}의 생일을 축하해주었다.`);
     }
@@ -267,35 +269,35 @@ function checkEventCard() {
       const pool = Object.keys(itemDatabase).filter(k => itemDatabase[k].type !== "broken" && itemDatabase[k].type !== "vehicle");
       const item = pool[Math.floor(Math.random() * pool.length)];
       playerInventory.push(item);
-      return `🎴 [사건] 안전지대 입구에 낯선 보급 상자가 놓여 있었다. 안에는 <b>[${getItemDisplayString(item)}]</b>이 들어 있었다.`;
+      return `✨ [사건] 안전지대 입구에 낯선 보급 상자가 놓여 있었다. 안에는 <b>[${getItemDisplayString(item)}]</b>이 들어 있었다.`;
     },
-    () => `🎴 [사건] 낡은 라디오에서 잡음 섞인 신호가 잠시 잡혔다가 이내 사라졌다.`,
+    () => `✨ [사건] 낡은 라디오에서 잡음 섞인 신호가 잠시 잡혔다가 이내 사라졌다.`,
     () => {
       const c = chars[Math.floor(Math.random() * chars.length)];
       const stats = calculateMaxStats(c);
       c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 6);
-      return `🎴 [사건] ${c.name}은/는 낯선 이가 두고 간 낡은 사진 한 장을 주웠다. 누구의 것인지는 알 수 없었다. (정신력 +6)`;
+      return `✨ [사건] ${c.name}은/는 낯선 이가 두고 간 낡은 사진 한 장을 주웠다. 누구의 것인지는 알 수 없었다. (정신력 +6)`;
     },
     () => {
       chars.forEach(c => { c.fatigueNum = Math.max(0, (c.fatigueNum || 0) - 5); });
-      return `🎴 [사건] 며칠간 이어진 가뭄 끝에 단비가 내렸다. 모두가 오랜만에 편히 잠들었다. (전원 피로 -5)`;
+      return `✨ [사건] 며칠간 이어진 가뭄 끝에 단비가 내렸다. 모두가 오랜만에 편히 잠들었다. (전원 피로 -5)`;
     },
     () => {
       const c = chars[Math.floor(Math.random() * chars.length)];
       c.corruptionNum = Math.min(100, (c.corruptionNum || 0) + 4);
-      return `🎴 [사건] 며칠 조용하던 그림자의 기운이 다시 짙어졌다. (오염도 +4)`;
+      return `✨ [사건] 며칠 조용하던 그림자의 기운이 다시 짙어졌다. (오염도 +4)`;
     },
     () => {
       chars.forEach(c => {
         const stats = calculateMaxStats(c);
         c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 4);
       });
-      return `🎴 [사건] 오랜만에 안전지대 사람들이 모여 조촐한 잔치를 열었다. (전원 정신력 +4)`;
+      return `✨ [사건] 오랜만에 안전지대 사람들이 모여 조촐한 잔치를 열었다. (전원 정신력 +4)`;
     },
     () => {
       const c = chars[Math.floor(Math.random() * chars.length)];
       c.healthNum = Math.max(0, (c.healthNum || 0) - 5);
-      return `🎴 [사건] ${c.name}은/는 사소한 부주의로 가벼운 찰과상을 입었다. 대단한 상처는 아니었다. (체력 -5)`;
+      return `✨ [사건] ${c.name}은/는 사소한 부주의로 가벼운 찰과상을 입었다. 대단한 상처는 아니었다. (체력 -5)`;
     }
   ];
 
@@ -698,16 +700,19 @@ function attemptCoupleBirth(chars) {
 
   const stageOk = c => c.lifeStage !== "어린이" && c.lifeStage !== "청소년" && c.lifeStage !== "노년";
   let couples = [];
-  for (let i = 0; i < chars.length; i++) {
-    for (let j = i + 1; j < chars.length; j++) {
-      let a = chars[i], b = chars[j];
-      if (a.relation === "연인" && b.relation === "연인" &&
-          a.targetName === b.name && b.targetName === a.name &&
-          stageOk(a) && stageOk(b)) {
-        couples.push([a, b]);
+  chars.forEach(c => {
+    if (!Array.isArray(c.relationships)) return;
+    c.relationships.forEach(r => {
+      if (r.relation !== "연인") return;
+      const partner = chars.find(p => p.charId === r.targetCharId);
+      if (!partner) return;
+      const mutual = Array.isArray(partner.relationships) &&
+        partner.relationships.some(pr => pr.targetCharId === c.charId && pr.relation === "연인");
+      if (mutual && stageOk(c) && stageOk(partner) && c.charId < partner.charId) {
+        couples.push([c, partner]);
       }
-    }
-  }
+    });
+  });
   if (couples.length === 0) return null;
   if (Math.random() >= 0.03) return null;
 
@@ -731,8 +736,7 @@ function attemptCoupleBirth(chars) {
     foodPref: babyData.food[Math.floor(Math.random() * babyData.food.length)],
     nation: p1.nation,
     species: p1.species,
-    lifeStage: "어린이",
-    relation: "지인"
+    lifeStage: "어린이"
   };
   const babyStats = calculateMaxStats(babyBase);
 
@@ -746,16 +750,38 @@ function attemptCoupleBirth(chars) {
     fatigueNum: 0,
     hungerNum: babyStats.maxHunger,
     corruptionNum: 0,
-    birthDay: Math.floor(Math.random() * 365) + 1
+    birthDay: Math.floor(Math.random() * 365) + 1,
+    relationships: [
+      { targetCharId: p1.charId, relation: "부모" },
+      { targetCharId: p2.charId, relation: "부모" }
+    ]
   };
   chars.push(babyFull);
+
+  // 부모 쪽에도 자식 관계를 추가한다 (연인 관계는 그대로 유지 - 부부이자 부모가 동시에 가능)
+  if (!Array.isArray(p1.relationships)) p1.relationships = [];
+  if (!Array.isArray(p2.relationships)) p2.relationships = [];
+  p1.relationships.push({ targetCharId: babyFull.charId, relation: "자식" });
+  p2.relationships.push({ targetCharId: babyFull.charId, relation: "자식" });
 
   p1.childCount = (p1.childCount || 0) + 1;
   p2.childCount = p1.childCount;
   addLog(`[탄생] ${p1.name}과 ${p2.name} 사이에서 새로운 아이 [${babyName}]가 태어났습니다! (이 커플의 자녀 ${p1.childCount}/${p1.maxChildren}명)`);
 
   // 주민 등록실에도 카드로 반영해두어야 다음 저장 시 아이가 사라지지 않는다
-  addCharacter(babyFull);
+  // (관계는 charId 기반으로 저장되어 있으므로, 카드에 보여줄 땐 이름 기반으로 바꿔서 전달)
+  const babyUiData = { ...babyFull, relationships: [
+    { relation: "부모", targetName: p1.name },
+    { relation: "부모", targetName: p2.name }
+  ]};
+  addCharacter(babyUiData);
+
+  document.querySelectorAll(".character-card").forEach(card => {
+    if (card.dataset.charId === p1.charId || card.dataset.charId === p2.charId) {
+      addRelationshipRow(card, { relation: "자식", targetName: babyName });
+    }
+  });
+
   return babyName;
 }
 
@@ -1125,31 +1151,7 @@ function triggerQuickNews() {
     announcementMsg = `<br>📢 [공지] ${note}`;
   }
 
-  let socialLog = "";
-  if (chars.length >= 2 && Math.random() < 0.7) {
-    let idx1 = Math.floor(Math.random() * chars.length);
-    let idx2;
-    do { idx2 = Math.floor(Math.random() * chars.length); } while (idx2 === idx1);
-
-    let c1 = chars[idx1];
-    let c2 = chars[idx2];
-
-    let isDifferentSpecies = c1.species !== c2.species;
-    let eventChance = isDifferentSpecies ? 0.4 : 0.8;
-
-    if (Math.random() < eventChance) {
-      let isConflict = Math.random() < 0.45;
-      if (isConflict) {
-        let confPhrase = conflictPhrases[Math.floor(Math.random() * conflictPhrases.length)];
-        let changePhrase = negativeChangePhrases[Math.floor(Math.random() * negativeChangePhrases.length)];
-        socialLog = `<br>💬 [관계] ${c1.name}과/와 ${c2.name}: ${confPhrase} 두 사람은 ${changePhrase}`;
-      } else {
-        let peacePhrase = peacefulPhrases[Math.floor(Math.random() * peacefulPhrases.length)];
-        let changePhrase = positiveChangePhrases[Math.floor(Math.random() * positiveChangePhrases.length)];
-        socialLog = `<br>🤝 [관계] ${c1.name}과/와 ${c2.name}: ${peacePhrase} 두 사람은 ${changePhrase}`;
-      }
-    }
-  }
+  addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${traitNewsMsg}${announcementMsg}`);
 
   attemptCoupleBirth(chars);
   checkQuestProgress("news");
@@ -1157,19 +1159,49 @@ function triggerQuickNews() {
   renderResidentMemos(chars);
 
   resultBox.textContent = `${activeRes.name}은/는 ${selectedMedia}을/를 읽었다.`;
-  addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${traitNewsMsg}${socialLog}${announcementMsg}`);
 }
 
 // ==========================================================
 // 일상 이벤트 자동 생성 (재생/자동 행동 공용, 하루를 진행시키지는 않음)
 // ==========================================================
 // 상호 지명된 관계일 때만 관계 상호작용 멘트 후보를 만든다 (지명 대상이 없으면 빈 배열)
+// 지정된 관계와 무관하게, 임의의 두 주민 사이에 우연히 일어나는 사회적 사건 (구 '오늘의 소식'에서 이동)
+function getAmbientSocialEventCandidate(chars) {
+  if (chars.length < 2) return [];
+  if (Math.random() >= 0.35) return [];
+
+  let idx1 = Math.floor(Math.random() * chars.length);
+  let idx2;
+  do { idx2 = Math.floor(Math.random() * chars.length); } while (idx2 === idx1);
+  const a = chars[idx1];
+  const b = chars[idx2];
+  if (!a.name || !b.name) return [];
+
+  const isDifferentSpecies = a.species !== b.species;
+  const eventChance = isDifferentSpecies ? 0.4 : 0.8;
+  if (Math.random() >= eventChance) return [];
+
+  const isConflict = Math.random() < 0.45;
+  let text;
+  if (isConflict) {
+    const confPhrase = conflictPhrases[Math.floor(Math.random() * conflictPhrases.length)];
+    const changePhrase = negativeChangePhrases[Math.floor(Math.random() * negativeChangePhrases.length)];
+    text = `[일상] ${a.name}과/와 ${b.name}: ${confPhrase} 두 사람은 ${changePhrase}`;
+  } else {
+    const peacePhrase = peacefulPhrases[Math.floor(Math.random() * peacefulPhrases.length)];
+    const changePhrase = positiveChangePhrases[Math.floor(Math.random() * positiveChangePhrases.length)];
+    text = `[일상] ${a.name}과/와 ${b.name}: ${peacePhrase} 두 사람은 ${changePhrase}`;
+  }
+  return [{ text }];
+}
+
 function getRelationshipEventCandidates(c1, chars) {
-  if (!c1.targetName) return [];
-  const partner = chars.find(c => c.name === c1.targetName);
+  if (!Array.isArray(c1.relationships) || c1.relationships.length === 0) return [];
+  const relEntry = c1.relationships[Math.floor(Math.random() * c1.relationships.length)];
+  const partner = chars.find(c => c.charId === relEntry.targetCharId);
   if (!partner) return [];
 
-  const rel = c1.relation;
+  const rel = relEntry.relation;
   let lines = [];
 
   if (rel === "부모" || rel === "자식") {
@@ -1299,6 +1331,7 @@ function generateRandomDailyEvent() {
 
   // 상호 지명된 관계가 있으면 관계 상호작용 멘트도 후보에 섞는다
   events = events.concat(getRelationshipEventCandidates(c1, chars));
+  events = events.concat(getAmbientSocialEventCandidate(chars));
 
   let chosen = events[Math.floor(Math.random() * events.length)];
 
@@ -1427,25 +1460,12 @@ function updateQuestUI() {
 // ==========================================================
 // 주민 등록 / 카드 로직
 // ==========================================================
-function refreshTargetOptions(cardElement, selectedName) {
-  const targetSelect = cardElement.querySelector(".targetSelect");
-  if (!targetSelect) return;
-  const allChars = JSON.parse(localStorage.getItem("characters")) || [];
-  const currentNameInCard = cardElement.querySelector(".characterNameInput").value;
-  let options = `<option value="">(비어 있음)</option>`;
-  allChars.forEach(c => {
-    if (c.name && c.name !== currentNameInCard) {
-      options += `<option value="${c.name}">${c.name}</option>`;
-    }
-  });
-  targetSelect.innerHTML = options;
-  if (selectedName) targetSelect.value = selectedName;
-}
-
 function refreshAllTargetOptions() {
   document.querySelectorAll(".character-card").forEach(card => {
-    const current = card.querySelector(".targetSelect") ? card.querySelector(".targetSelect").value : "";
-    refreshTargetOptions(card, current);
+    card.querySelectorAll(".relationshipRow").forEach(row => {
+      const current = row.querySelector(".relTargetSelect") ? row.querySelector(".relTargetSelect").value : "";
+      refreshRowTargetOptions(card, row, current);
+    });
   });
 }
 
@@ -1463,7 +1483,9 @@ function setupCardEvents(cardElement, savedData = null) {
     if (savedData.nation) cardElement.querySelector(".nationSelect").value = savedData.nation;
     if (savedData.species) cardElement.querySelector(".speciesSelect").value = savedData.species;
     if (savedData.lifeStage) cardElement.querySelector(".lifeStageSelect").value = savedData.lifeStage;
-    if (savedData.relation) cardElement.querySelector(".relationSelect").value = savedData.relation;
+
+    const rels = Array.isArray(savedData.relationships) ? savedData.relationships : [];
+    rels.forEach(rel => addRelationshipRow(cardElement, rel));
   }
 
   const bloodButtons = cardElement.querySelectorAll(".bloodButton");
@@ -1483,9 +1505,8 @@ function setupCardEvents(cardElement, savedData = null) {
     };
   });
 
-  refreshTargetOptions(cardElement, savedData ? savedData.targetName : null);
   nameInput.oninput = function() {
-    refreshTargetOptions(cardElement, cardElement.querySelector(".targetSelect").value);
+    refreshAllTargetOptions(); // 이 카드의 이름이 바뀌면 다른 카드들의 관계 대상 목록도 갱신
   };
 }
 
@@ -1555,27 +1576,56 @@ function buildCardMarkup(savedData) {
       <option value="노년">노년</option>
     </select>
 
-    <p style="margin-top:10px;">상대 관계 선택</p>
-    <select class='relationSelect'>
-      <option value="지인">지인</option>
-      <option value="부모">부모</option>
-      <option value="자식">자식</option>
-      <option value="보호자와 피보호자">보호자와 피보호자</option>
-      <option value="형제자매">형제자매</option>
-      <option value="친척">친척</option>
-      <option value="연인">연인</option>
-      <option value="친구">친구</option>
-      <option value="동료">동료</option>
-      <option value="은인">은인</option>
-      <option value="원수">원수</option>
-      <option value="경쟁자">경쟁자</option>
-      <option value="전 연인">전 연인</option>
-      <option value="전 배우자">전 배우자</option>
-    </select>
-
-    <p style="margin-top:10px;">관계 지명 대상</p>
-    <select class='targetSelect'><option value="">(비어 있음)</option></select>
+    <p style="margin-top:10px;">관계 (여러 개 지정 가능)</p>
+    <div class="relationshipList"></div>
+    <button type="button" onclick="addRelationshipRow(this.closest('.character-card'))" style="background-color:#718096; font-size:12px; padding:5px 10px;">➕ 관계 추가</button>
   `;
+}
+
+// 관계 종류 옵션을 만들어주는 헬퍼
+function relationOptionsHtml(selected) {
+  return relationList
+    .filter(r => r !== "지인")
+    .map(r => `<option value="${r}" ${r === selected ? "selected" : ""}>${r}</option>`)
+    .join("");
+}
+
+// 관계 한 줄(관계 종류 + 대상 + 삭제 버튼)의 마크업
+function buildRelationshipRowMarkup(rel) {
+  const relation = rel ? rel.relation : relationList.filter(r => r !== "지인")[0];
+  return `<div class="relationshipRow" style="display:flex; gap:4px; align-items:center; margin-bottom:5px;">
+    <select class="relRelationSelect" style="flex:1;">${relationOptionsHtml(relation)}</select>
+    <select class="relTargetSelect" style="flex:1;"><option value="">(비어 있음)</option></select>
+    <button type="button" onclick="this.closest('.relationshipRow').remove()" style="background-color:#e53e3e; padding:5px 8px; font-size:11px;">✕</button>
+  </div>`;
+}
+
+// 카드에 관계 한 줄을 추가한다 (savedRel이 있으면 그 값으로 미리 채움)
+function addRelationshipRow(card, savedRel) {
+  if (!card) return;
+  const list = card.querySelector(".relationshipList");
+  if (!list) return;
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = buildRelationshipRowMarkup(savedRel);
+  const row = wrapper.firstElementChild;
+  list.appendChild(row);
+  refreshRowTargetOptions(card, row, savedRel ? savedRel.targetName : null);
+}
+
+// 관계 대상 select의 옵션 목록을 최신 주민 명단으로 갱신한다 (본인 제외)
+function refreshRowTargetOptions(card, row, selectedName) {
+  const targetSelect = row.querySelector(".relTargetSelect");
+  if (!targetSelect) return;
+  const allChars = JSON.parse(localStorage.getItem("characters")) || [];
+  const currentNameInCard = card.querySelector(".characterNameInput").value;
+  let options = `<option value="">(비어 있음)</option>`;
+  allChars.forEach(c => {
+    if (c.name && c.name !== currentNameInCard) {
+      options += `<option value="${c.name}">${c.name}</option>`;
+    }
+  });
+  targetSelect.innerHTML = options;
+  if (selectedName) targetSelect.value = selectedName;
 }
 
 // 이름/혈액형/별자리가 바뀌어도 같은 주민임을 안정적으로 식별하기 위한 고유 ID
@@ -1679,28 +1729,36 @@ function randomizeNewCharacter() {
 
 // 관계 지명 상호 동기화: A→B 지정 시 B도 자동으로 A를 같은(반대) 관계로 지정
 // 주민이 1명뿐이면 관계/지명은 항상 공란으로 강제
+// 존재하지 않는 대상을 가리키는 관계를 정리하고, 상호 관계가 양쪽에 모두 반영되도록 동기화한다
+// (알려진 한계: 한쪽 카드에서만 관계를 지웠을 때, 상대방 카드가 그 관계를 여전히 갖고 있으면 다음 저장 시 되살아날 수 있음 - 완전히 끊으려면 양쪽에서 지워야 함)
 function syncMutualRelations(characters) {
+  const byId = {};
+  characters.forEach(c => { if (c.charId) byId[c.charId] = c; });
+
   characters.forEach(c => {
-    if (c.targetName) {
-      const target = characters.find(t => t.name === c.targetName);
-      if (!target) {
-        // 지명 대상이 존재하지 않으면(퇴장 등) 관계를 정리
-        c.targetName = "";
-        c.relation = "지인";
+    if (!Array.isArray(c.relationships)) c.relationships = [];
+    c.relationships = c.relationships.filter(r => r.targetCharId && byId[r.targetCharId]);
+  });
+
+  characters.forEach(c => {
+    c.relationships.forEach(r => {
+      const target = byId[r.targetCharId];
+      if (!target) return;
+      const inv = relationInverseMap[r.relation] || r.relation;
+      if (!Array.isArray(target.relationships)) target.relationships = [];
+      const existing = target.relationships.find(tr => tr.targetCharId === c.charId);
+      if (existing) {
+        existing.relation = inv;
       } else {
-        const inv = relationInverseMap[c.relation] || c.relation;
-        target.targetName = c.name;
-        target.relation = inv;
+        target.relationships.push({ targetCharId: c.charId, relation: inv });
       }
-    } else {
-      // 지명 대상이 없으면 관계도 항상 지인으로 통일 (대상 없이 관계만 남는 것을 방지)
-      c.relation = "지인";
-    }
+    });
   });
 }
 
 function saveCharacters(isSilent = false) {
   const characters = [];
+  const cardRelationshipsRaw = []; // 카드 순서와 1:1로 대응하는 관계 후보 목록 (이름 기반, 아직 charId로 변환 전)
   let existingChars = JSON.parse(localStorage.getItem("characters")) || [];
 
   document.querySelectorAll(".character-card").forEach(function(card) {
@@ -1708,8 +1766,6 @@ function saveCharacters(isSilent = false) {
     const nation = card.querySelector(".nationSelect").value;
     const species = card.querySelector(".speciesSelect").value;
     const lifeStage = card.querySelector(".lifeStageSelect").value;
-    const relation = card.querySelector(".relationSelect").value;
-    const targetName = card.querySelector(".targetSelect") ? card.querySelector(".targetSelect").value : "";
 
     const bloodType = card.dataset.bloodType || "";
     const zodiac = card.dataset.zodiac || "";
@@ -1718,6 +1774,17 @@ function saveCharacters(isSilent = false) {
     const charId = card.dataset.charId || generateCharId();
     card.dataset.charId = charId;
 
+    // 이 카드의 관계 행들을 읽어둔다 (대상은 아직 이름 기준 - 뒤에서 charId로 변환)
+    const relRows = [];
+    card.querySelectorAll(".relationshipRow").forEach(row => {
+      const relSelect = row.querySelector(".relRelationSelect");
+      const targetSelect = row.querySelector(".relTargetSelect");
+      const relation = relSelect ? relSelect.value : "";
+      const targetName = targetSelect ? targetSelect.value : "";
+      if (relation && targetName) relRows.push({ relation, targetName });
+    });
+    cardRelationshipsRaw.push(relRows);
+
     // 고유 ID로 우선 식별하고, ID가 없던 예전 저장 데이터는 이름+혈액형+별자리로 한 번만 매칭
     let found = existingChars.find(c => c.charId === charId) ||
                 existingChars.find(c => !c.charId && c.name === name && c.bloodType === bloodType && c.zodiac === zodiac);
@@ -1725,7 +1792,7 @@ function saveCharacters(isSilent = false) {
     let basePower, baseAgility, baseIntel, baseLuck, assignedTraits;
     let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay, maxChildren, childCount;
 
-    const baseInfo = { charId, name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage, relation, targetName };
+    const baseInfo = { charId, name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage };
     const stats = calculateMaxStats(baseInfo);
 
     if (found) {
@@ -1771,8 +1838,20 @@ function saveCharacters(isSilent = false) {
       power: basePower, agility: baseAgility, intel: baseIntel, luck: baseLuck,
       traits: assignedTraits,
       healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay,
-      maxChildren, childCount
+      maxChildren, childCount,
+      relationships: []
     });
+  });
+
+  // 이름 → charId 매핑을 만든 뒤, 각 카드의 관계 후보를 charId 기반으로 확정한다
+  const nameToCharId = {};
+  characters.forEach(c => { if (c.name) nameToCharId[c.name] = c.charId; });
+
+  characters.forEach((c, i) => {
+    const rows = cardRelationshipsRaw[i] || [];
+    c.relationships = rows
+      .map(r => ({ targetCharId: nameToCharId[r.targetName], relation: r.relation }))
+      .filter(r => r.targetCharId && r.targetCharId !== c.charId);
   });
 
   syncMutualRelations(characters);
@@ -1816,14 +1895,22 @@ function renderResidentMemos(characters) {
     let huPct = (hungerNum / stats.maxHunger) * 100;
     let coPct = corruptionNum; // 오염도는 0~100 고정 범위
 
+    const hasLoverRelation = Array.isArray(char.relationships) && char.relationships.some(r => r.relation === "연인");
     let stageWarning = "";
-    if ((char.lifeStage === "어린이" || char.lifeStage === "청소년") && char.relation === "연인") {
+    if ((char.lifeStage === "어린이" || char.lifeStage === "청소년") && hasLoverRelation) {
       stageWarning = "<br><span style='color:red; font-weight:bold;'>⚠️ 제약: 어린이/청소년은 연인 관계 불가!</span>";
-    } else if (char.lifeStage === "노년" && char.relation === "연인") {
+    } else if (char.lifeStage === "노년" && hasLoverRelation) {
       stageWarning = "<br><span style='color:red; font-weight:bold;'>⚠️ 제약: 노년 연인 관계 불가!</span>";
     }
 
-    let relText = char.targetName ? `<b>${char.targetName}</b>의 ${char.relation || '지인'}` : (char.relation && char.relation !== "지인" ? char.relation : "");
+    let relText = "(없음)";
+    if (Array.isArray(char.relationships) && char.relationships.length > 0) {
+      relText = char.relationships.map(r => {
+        const t = characters.find(c => c.charId === r.targetCharId);
+        const tName = t ? t.name : "(알 수 없음)";
+        return `<b>${tName}</b>의 ${r.relation}`;
+      }).join(", ");
+    }
     let childText = (char.maxChildren) ? `<p style="font-size:11px; color:#7b68ee;">👶 자녀 ${char.childCount || 0} / ${char.maxChildren}명</p>` : "";
     let birthText = char.birthDay ? `<p style="font-size:11px; color:#a0724f;">🎂 생일: ${char.birthDay}일째</p>` : "";
 
@@ -1970,6 +2057,23 @@ function importGameData(event) {
   reader.readAsText(file);
 }
 
+// 저장된 관계(charId 기반)를 카드에 보여줄 이름 기반 형태로 바꾼다.
+// relationships 배열이 없는 예전 저장 데이터는 단일 relation/targetName 필드를 1개짜리 관계로 마이그레이션한다.
+function resolveRelationshipsForUI(rawChar, allRawChars) {
+  if (Array.isArray(rawChar.relationships)) {
+    return rawChar.relationships
+      .map(r => {
+        const target = allRawChars.find(c => c.charId === r.targetCharId);
+        return target ? { relation: r.relation, targetName: target.name } : null;
+      })
+      .filter(Boolean);
+  }
+  if (rawChar.relation && rawChar.relation !== "지인" && rawChar.targetName) {
+    return [{ relation: rawChar.relation, targetName: rawChar.targetName }];
+  }
+  return [];
+}
+
 function loadGameData() {
   const savedMoney = localStorage.getItem("playerMoney");
   if (savedMoney !== null) playerMoney = parseInt(savedMoney);
@@ -2012,7 +2116,8 @@ function loadGameData() {
     addCharacter();
   } else {
     savedCharacters.forEach(function(characterData) {
-      addCharacter(characterData);
+      const uiData = { ...characterData, relationships: resolveRelationshipsForUI(characterData, savedCharacters) };
+      addCharacter(uiData);
     });
   }
 
