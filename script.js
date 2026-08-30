@@ -1493,6 +1493,27 @@ function pausePlayback() {
   document.getElementById("playbackStatus").textContent = "상태: 일시정지됨";
 }
 
+// 실제로 세계 날짜를 7일 진행시킨다 (생일/노화/사건카드/일상 전부 하루 단위로 반영)
+function triggerWeekSkip() {
+  let chars = JSON.parse(localStorage.getItem("characters")) || [];
+  if (chars.length === 0 || !chars.some(c => c.name)) {
+    alert("등록된 주민이 없습니다. 주민 등록실에서 주민을 등록해주세요!");
+    return;
+  }
+  if (!confirm("일주일(7일)을 한 번에 흘려보냅니다. 계속할까요?")) return;
+
+  addLog(`[시간 경과] 일주일을 흘려보냈습니다.`);
+  for (let i = 0; i < 7; i++) {
+    worldDay++;
+    checkBirthdays();
+    runAgingCheck();
+    checkEventCard();
+    generateRandomDailyEvent();
+  }
+  updateDayDisplay();
+  updateBagDisplay();
+}
+
 function toggleAutoRoutine() {
   const btn = document.getElementById("autoToggleBtn");
   if (isAutoRoutineOn) {
