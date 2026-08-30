@@ -217,7 +217,86 @@ function advanceDay() {
   addLog(`[날짜] ${worldDay}일째 아침이 밝았다.`);
   updateDayDisplay();
   checkBirthdays();
+  runAgingCheck();
   checkEventCard();
+}
+
+// ==========================================================
+// 생애주기 (노화 / 사망) - 즉사 없이, 시간이 지날수록 확률이 오르되 반드시 상한이 있는 방식
+// ==========================================================
+const lifeStageOrder = ["어린이", "청소년", "청년", "중년", "노년"];
+
+function runAgingCheck() {
+  let chars = JSON.parse(localStorage.getItem("characters")) || [];
+  if (chars.length === 0) return;
+  processAging(chars);
+  localStorage.setItem("characters", JSON.stringify(chars));
+  renderResidentMemos(chars);
+}
+
+function processAging(chars) {
+  // 사망으로 배열 길이가 줄어들 수 있으므로 뒤에서부터 순회한다
+  for (let i = chars.length - 1; i >= 0; i--) {
+    const c = chars[i];
+    if (!c.name) continue;
+
+    // 사고사: 체력이 0에 닿으면 (현재는 체력이 잘 안 깎이지만, 나중에 밸런스가 손봐지면 실제로 작동함)
+    if ((c.healthNum || 0) <= 0) {
+      handleCharacterDeath(chars, c, "갑작스러운 사고로 세상을 떠났다");
+      continue;
+    }
+
+    c.daysInStage = (c.daysInStage || 0) + 1;
+    const stageIdx = lifeStageOrder.indexOf(c.lifeStage);
+
+    if (stageIdx >= 0 && stageIdx < lifeStageOrder.length - 1) {
+      // 다음 연령대로 넘어갈 확률: 일정 기간이 지나야 시작되고, 그 뒤로는 날이 갈수록 확률이 올라가 결국 반드시 넘어간다
+      const minDays = 40, range = 80;
+      if (c.daysInStage > minDays) {
+        const chance = Math.min(1, (c.daysInStage - minDays) / range);
+        if (Math.random() < chance) {
+          const nextStage = lifeStageOrder[stageIdx + 1];
+          c.lifeStage = nextStage;
+          c.daysInStage = 0;
+          addLog(`[성장] ${c.name}은/는 ${nextStage}이/가 되었다.`);
+
+          // 카드의 연령대 드롭다운도 함께 갱신해야 다음 저장 시 원래 값으로 되돌아가지 않는다
+          const card = Array.from(document.querySelectorAll(".character-card")).find(cd => cd.dataset.charId === c.charId);
+          if (card) {
+            const select = card.querySelector(".lifeStageSelect");
+            if (select) select.value = nextStage;
+          }
+        }
+      }
+    } else if (c.lifeStage === "노년") {
+      // 자연사: 노년이 된 지 한참 지나야 시작되고, 역시 결국은 반드시 찾아온다
+      const minDays = 60, range = 180;
+      if (c.daysInStage > minDays) {
+        const chance = Math.min(1, (c.daysInStage - minDays) / range);
+        if (Math.random() < chance) {
+          handleCharacterDeath(chars, c, "평온하게 노환으로 세상을 떠났다");
+        }
+      }
+    }
+  }
+}
+
+// 캐릭터 사망 처리 (자동): chars 배열에서 제거, 추모 공간에 등록, 카드 정리, 로그 기록
+function handleCharacterDeath(chars, char, causeText) {
+  const idx = chars.indexOf(char);
+  if (idx !== -1) chars.splice(idx, 1);
+
+  memorialList.push({ name: char.name, date: new Date().toLocaleDateString() });
+  renderMemorials();
+  saveGameData();
+
+  const card = Array.from(document.querySelectorAll(".character-card")).find(c => c.dataset.charId === char.charId);
+  if (card) {
+    card.remove();
+    updateCardTitlesAndCount();
+  }
+
+  addLog(`🪦 [사망] ${char.name}은/는 ${causeText}.`);
 }
 
 // 세계 날짜를 365일 주기로 취급해 생일을 확인한다 (등록 시 자동으로 배정된 생일 기준)
@@ -332,6 +411,7 @@ function processOfflineElapsedTime() {
       for (let i = 0; i < cappedDays; i++) {
         worldDay++;
         checkBirthdays();
+        runAgingCheck();
         checkEventCard();
         generateRandomDailyEvent();
       }
@@ -1148,7 +1228,7 @@ function triggerQuickNews() {
   let announcementMsg = "";
   if (Math.random() < 0.25) {
     const note = worldAnnouncements[Math.floor(Math.random() * worldAnnouncements.length)];
-    announcementMsg = `<br>📢 [공지] ${note}`;
+    announcementMsg = `<br>📢 [소문] ${note}`;
   }
 
   addLog(`[소식] ${activeRes.name}은/는 [${selectedMedia}]을/를 펼쳐들었다. (${effectText})${traitNewsMsg}${announcementMsg}`);
@@ -1377,7 +1457,7 @@ function generateRandomDailyEvent() {
     if (chosen.relEntry.relation === "연인" && chosen.relEntry.affinity >= 85) {
       chosen.relEntry.relation = "배우자";
       if (reciprocal) reciprocal.relation = "배우자";
-      relationChangeMsg = `<br>💍 [관계] ${c1.name}과 ${chosen.partner.name}는 서로를 배우자로 여기기 시작했다.`;
+      relationChangeMsg = `<br>💍 [관계] ${c1.name}과 ${chosen.partner.name}는 서약을 나누고 서로를 배우자로 삼았다.`;
     }
 
     // 친구 관계인데 호감도가 낮으면, 관계 자체는 유지한 채 가끔 소원해지는 문구만 나온다
@@ -1824,7 +1904,7 @@ function saveCharacters(isSilent = false) {
     foundRefs.push(found || null);
 
     let basePower, baseAgility, baseIntel, baseLuck, assignedTraits;
-    let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay, maxChildren, childCount;
+    let healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay, daysInStage, maxChildren, childCount;
 
     const baseInfo = { charId, name, bloodType, zodiac, mbti, foodPref, nation, species, lifeStage };
     const stats = calculateMaxStats(baseInfo);
@@ -1841,6 +1921,7 @@ function saveCharacters(isSilent = false) {
       hungerNum = found.hungerNum ?? stats.maxHunger;
       corruptionNum = found.corruptionNum ?? 0;
       birthDay = found.birthDay ?? (Math.floor(Math.random() * 365) + 1);
+      daysInStage = found.daysInStage ?? 0;
       maxChildren = found.maxChildren;
       childCount = found.childCount;
     } else {
@@ -1865,13 +1946,14 @@ function saveCharacters(isSilent = false) {
       hungerNum = stats.maxHunger;
       corruptionNum = 0;
       birthDay = Math.floor(Math.random() * 365) + 1;
+      daysInStage = 0;
     }
 
     characters.push({
       ...baseInfo,
       power: basePower, agility: baseAgility, intel: baseIntel, luck: baseLuck,
       traits: assignedTraits,
-      healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay,
+      healthNum, mentalNum, fatigueNum, hungerNum, corruptionNum, birthDay, daysInStage,
       maxChildren, childCount,
       relationships: []
     });
