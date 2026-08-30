@@ -219,6 +219,26 @@ function advanceDay() {
   checkBirthdays();
   runAgingCheck();
   checkEventCard();
+  decayCorruptionForAll();
+}
+
+// 그림자 오염도는 노출이 없으면 아주 조금씩 자연 감소한다 (로그로 알리진 않고 조용히 회복됨)
+function decayCorruptionForAll() {
+  let chars = JSON.parse(localStorage.getItem("characters")) || [];
+  if (chars.length === 0) return;
+
+  let changed = false;
+  chars.forEach(c => {
+    if ((c.corruptionNum || 0) > 0 && Math.random() < 0.3) {
+      c.corruptionNum = Math.max(0, c.corruptionNum - (Math.floor(Math.random() * 2) + 1));
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    localStorage.setItem("characters", JSON.stringify(chars));
+    renderResidentMemos(chars);
+  }
 }
 
 // ==========================================================
@@ -413,6 +433,7 @@ function processOfflineElapsedTime() {
         checkBirthdays();
         runAgingCheck();
         checkEventCard();
+        decayCorruptionForAll();
         generateRandomDailyEvent();
       }
       updateDayDisplay();
@@ -468,6 +489,8 @@ function updateBagDisplay() {
   saveGameData();
 }
 
+let pendingItemUseIndex = null;
+
 function useInventoryItem(index) {
   let itemName = playerInventory[index];
   let itemInfo = itemDatabase[itemName];
@@ -480,18 +503,46 @@ function useInventoryItem(index) {
     return;
   }
 
-  let targetChar = validChars[0];
-  if (validChars.length > 1) {
-    const nameList = validChars.map(c => c.name).join(", ");
-    const input = prompt(`누구에게 [${itemName}]을(를) 사용할까요?\n(${nameList})`, validChars[0].name);
-    if (input === null) return; // 취소하면 사용하지 않음
-    const found = validChars.find(c => c.name === input.trim());
-    if (!found) {
-      alert("입력한 이름의 주민을 찾을 수 없습니다.");
-      return;
-    }
-    targetChar = found;
+  if (validChars.length === 1) {
+    applyItemToCharacter(index, validChars[0].charId);
+    return;
   }
+
+  pendingItemUseIndex = index;
+  openItemTargetModal(itemName, validChars);
+}
+
+function openItemTargetModal(itemName, validChars) {
+  document.getElementById("itemTargetTitle").textContent = `[${itemName}] 사용할 대상 선택`;
+  const list = document.getElementById("itemTargetList");
+  list.innerHTML = "";
+  validChars.forEach(c => {
+    const btn = document.createElement("button");
+    btn.textContent = c.name;
+    btn.style.textAlign = "left";
+    btn.onclick = () => {
+      const idx = pendingItemUseIndex;
+      closeItemTargetModal();
+      applyItemToCharacter(idx, c.charId);
+    };
+    list.appendChild(btn);
+  });
+  document.getElementById("itemTargetModal").classList.add("active");
+}
+
+function closeItemTargetModal() {
+  document.getElementById("itemTargetModal").classList.remove("active");
+  pendingItemUseIndex = null;
+}
+
+function applyItemToCharacter(index, targetCharId) {
+  let itemName = playerInventory[index];
+  let itemInfo = itemDatabase[itemName];
+  if (!itemInfo) return;
+
+  let chars = JSON.parse(localStorage.getItem("characters")) || [];
+  let targetChar = chars.find(c => c.charId === targetCharId);
+  if (!targetChar) return;
 
   let stats = calculateMaxStats(targetChar);
 
@@ -1508,6 +1559,7 @@ function triggerWeekSkip() {
     checkBirthdays();
     runAgingCheck();
     checkEventCard();
+    decayCorruptionForAll();
     generateRandomDailyEvent();
   }
   updateDayDisplay();

@@ -163,6 +163,15 @@
     </div>
   </div>
 
+  <!-- 아이템 사용 대상 선택 모달 -->
+  <div id="itemTargetModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 id="itemTargetTitle" style="border:none; margin: 0 0 10px 0;">사용할 대상 선택</h3>
+      <div id="itemTargetList" style="display:flex; flex-direction:column; gap:6px; margin:12px 0; max-height:300px; overflow-y:auto;"></div>
+      <button onclick="closeItemTargetModal()" style="background:#718096; margin-top:8px;">취소</button>
+    </div>
+  </div>
+
 <script src="script.js"></script>
 </body>
 </html>
