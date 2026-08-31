@@ -391,7 +391,7 @@ function checkEventCard() {
         const stats = calculateMaxStats(c);
         c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 4);
       });
-      return `✨ [사건] 오랜만에 안전지대 사람들이 모여 조촐한 잔치를 열었다. (전원 정신력 +4)`;
+      return `✨ [사건] 오랜만에 황야 정착촌 주민들이 모여 조촐한 잔치를 열었다. (전원 정신력 +4)`;
     },
     () => {
       const c = chars[Math.floor(Math.random() * chars.length)];
@@ -758,6 +758,11 @@ function checkCharacterPriority(char) {
       addLog(`[자동 생존] ${char.name}은/는 허기가 심해 자동으로 [${foodName}]을/를 소모했다. (허기 +${effect})`);
       updateBagDisplay();
       return true;
+    } else if (char.hungerNum < 15) {
+      // 먹을 것이 없는데 허기가 심하면 체력이 서서히 상한다
+      char.healthNum = Math.max(0, (char.healthNum || 0) - 3);
+      addLog(`[자동 생존] ${char.name}은/는 먹을 것이 없어 허기로 체력이 조금씩 상했다. (체력 -3)`);
+      return true;
     }
   }
   return false;
@@ -974,6 +979,16 @@ function triggerAdventure() {
       activeRes.fatigueNum = Math.max(0, activeRes.fatigueNum - Math.round(fatigueAdd * 0.15));
       fortuneMsg += " 그래도 지니고 있던 부적 덕분인지 큰 화는 면했다.";
     }
+  }
+
+  // 탐험은 이제 체력과 정신력도 조금씩 소모시킨다 (허기처럼 실제로 깎이는 자원)
+  let healthCost = 3;
+  if (fortune.tier === "행운") healthCost = 0;
+  else if (fortune.tier === "불운") healthCost = 6;
+  activeRes.healthNum = Math.max(0, (activeRes.healthNum || 0) - healthCost);
+
+  if (fortune.tier === "불운" || weatherObj.type === "special") {
+    activeRes.mentalNum = Math.max(0, (activeRes.mentalNum || 0) - 3);
   }
 
   // 소지품 중 나침반/지도가 탐험 결과에 살짝 관여한다
@@ -1412,7 +1427,9 @@ function generateRandomDailyEvent() {
     { text: `[일상] ${c1.name}은/는 장비를 정비하며 시간을 보냈다.`, stat: "fatigueNum", amount: -3 },
     { text: `[일상] ${c1.name}은/는 황야의 날씨를 확인했다.`, stat: "fatigueNum", amount: -2 },
     { text: `[일상] ${c1.name}은/는 마법 등기소에 들러 누군가에게 보낼 편지를 부쳤다.`, stat: "mentalNum", amount: 3 },
-    { text: `[일상] ${c1.name}은/는 우체부에게 먼 안전지대에서 온 편지를 받았다.`, stat: "mentalNum", amount: 4 }
+    { text: `[일상] ${c1.name}은/는 우체부에게 먼 안전지대에서 온 편지를 받았다.`, stat: "mentalNum", amount: 4 },
+    { text: `[일상] ${c1.name}은/는 몸살 기운이 있었지만 하루 푹 쉬며 나아졌다.`, stat: "healthNum", amount: 4 },
+    { text: `[일상] ${c1.name}은/는 따뜻한 물로 몸을 씻고 상처를 살폈다.`, stat: "healthNum", amount: 3 }
   ];
 
   if (c1.nation === "동쪽") {
@@ -1468,6 +1485,9 @@ function generateRandomDailyEvent() {
   if (traits.includes("생활력") || traits.includes("부품 재활용") || traits.includes("폐품 감정")) {
     events.push({ text: `[일상] ${c1.name}은/는 자잘한 살림살이를 손보며 하루를 보냈다.`, stat: "fatigueNum", amount: -4 });
   }
+  if (traits.includes("응급 처치") || traits.includes("약초 식별")) {
+    events.push({ text: `[일상] ${c1.name}은/는 스스로 상처를 돌보고 약초를 달여 마셨다.`, stat: "healthNum", amount: 5 });
+  }
 
   // 상호 지명된 관계가 있으면 관계 상호작용 멘트도 후보에 섞는다
   events = events.concat(getRelationshipEventCandidates(c1, chars));
@@ -1483,6 +1503,9 @@ function generateRandomDailyEvent() {
   } else if (chosen.stat === "mentalNum") {
     c1.mentalNum = Math.max(0, Math.min(stats.maxMental, (c1.mentalNum || 0) + chosen.amount));
     statLabel = ` (정신력 ${chosen.amount > 0 ? "+" : ""}${chosen.amount})`;
+  } else if (chosen.stat === "healthNum") {
+    c1.healthNum = Math.max(0, Math.min(stats.maxHealth, (c1.healthNum || 0) + chosen.amount));
+    statLabel = ` (체력 ${chosen.amount > 0 ? "+" : ""}${chosen.amount})`;
   }
 
   // 관계 상호작용 이벤트는 상대방에게도 같은 효과를 적용한다
@@ -1588,6 +1611,7 @@ function toggleAutoRoutine() {
       if ((target.fatigueNum || 0) >= limit) {
         target.fatigueNum = Math.max(0, target.fatigueNum - 30);
         target.mentalNum = Math.min(stats.maxMental, (target.mentalNum || 0) + 10);
+        target.healthNum = Math.min(stats.maxHealth, (target.healthNum || 0) + 5);
         addLog(`[휴식] ${target.name}은/는 피로도가 높아 휴식을 취했다.`);
         localStorage.setItem("characters", JSON.stringify(chars));
         renderResidentMemos(chars);
