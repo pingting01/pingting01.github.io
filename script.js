@@ -78,7 +78,7 @@ const itemDatabase = {
   "시료 보관병": { emoji: "🧫", desc: "체액이나 시료를 담아둔다.", type: "etc", price: 45 },
   "이능력 분석 시약": { emoji: "🧬", desc: "특이 파동을 측정하는 약품.", type: "etc", price: 250 },
   "보급품 상자": { emoji: "📦", desc: "무엇이 들어있는지 모르는 밀봉 상자.", type: "etc", price: 130 },
-  "정화석": { emoji: "🪨", desc: "오염을 완화해주는 신비한 돌.", type: "special", price: 200 },
+  "정화석": { emoji: "🪨", desc: "오염을 정화해주는 신비한 돌. 사용하면 그림자 오염도를 낮춰준다.", type: "purify", effect: 20, price: 200 },
   "괴물 뼈 조각": { emoji: "🦴", desc: "단단한 괴물의 유해 조각.", type: "special", price: 90 },
   "미확인 분말": { emoji: "🫙", desc: "출처를 알 수 없는 가루.", type: "special", price: 70 },
   "이능력 잔여 결정": { emoji: "💎", desc: "은은한 빛을 내뿜는 결정체.", type: "special", price: 400 },
@@ -465,7 +465,7 @@ function updateBagDisplay() {
     playerInventory.forEach((item, index) => {
       let info = itemDatabase[item] || { desc: "설명 없음" };
       let displayName = getItemDisplayString(item);
-      let isUsable = info.type === "food" || info.type === "med";
+      let isUsable = info.type === "food" || info.type === "med" || info.type === "purify";
       let isBroken = info.type === "broken";
       let isSellable = !isBroken && (info.price || 0) > 0;
 
@@ -552,6 +552,10 @@ function applyItemToCharacter(index, targetCharId) {
   } else if (itemInfo.type === "med") {
     targetChar.healthNum = Math.min(stats.maxHealth, (targetChar.healthNum || 0) + itemInfo.effect);
     addLog(`[치료] ${targetChar.name}은/는 [${itemName}]을/를 사용하여 체력을 회복했다. (+${itemInfo.effect})`);
+  } else if (itemInfo.type === "purify") {
+    const before = targetChar.corruptionNum || 0;
+    targetChar.corruptionNum = Math.max(0, before - itemInfo.effect);
+    addLog(`[정화] ${targetChar.name}은/는 [${itemName}]을/를 사용해 그림자 오염을 씻어냈다. (오염도 -${before - targetChar.corruptionNum})`);
   }
 
   localStorage.setItem("characters", JSON.stringify(chars));
@@ -780,7 +784,16 @@ function applyShadowExposure(char, weatherType) {
 
   const amount = Math.floor(Math.random() * 6) + 3; // 3~8
   char.corruptionNum = Math.min(100, char.corruptionNum + amount);
-  return ` 어딘가에서 옅은 그림자의 흔적이 스치듯 느껴졌다. (오염도 +${amount})`;
+
+  const exposureLines = [
+    " 어딘가에서 옅은 그림자의 흔적이 스치듯 느껴졌다.",
+    " 문득 등 뒤가 서늘해지는 기분이 들었다.",
+    " 지나온 길에 검은 얼룩 같은 흔적이 남아 있었다.",
+    " 잠깐이지만 주변의 소리가 멀어지는 듯한 느낌을 받았다.",
+    " 그림자가 스쳐간 자리처럼, 풀이 축 늘어져 있었다."
+  ];
+  const line = exposureLines[Math.floor(Math.random() * exposureLines.length)];
+  return `${line} (오염도 +${amount})`;
 }
 
 // 오염도가 쌓인 상태에서 정신력이 낮으면 가끔 소소한 디버프가 발생한다 (정신력이 높으면 거의 영향 없음)
@@ -797,7 +810,15 @@ function applyShadowInfluence(char) {
 
   const amount = corruption >= 60 ? (Math.floor(Math.random() * 5) + 5) : (Math.floor(Math.random() * 3) + 2);
   char.fatigueNum = Math.min(stats.maxFatigue, (char.fatigueNum || 0) + amount);
-  return ` 이유 모를 불안이 스며들어 마음이 무거웠다. (피로 +${amount})`;
+
+  const influenceLines = [
+    " 이유 모를 불안이 스며들어 마음이 무거웠다.",
+    " 별일 아닌 소리에도 자꾸 신경이 곤두섰다.",
+    " 잠자리가 뒤숭숭해 자꾸 뒤척였다.",
+    " 문득문득 누군가 지켜보는 듯한 느낌에 시달렸다."
+  ];
+  const line = influenceLines[Math.floor(Math.random() * influenceLines.length)];
+  return ` ${line} (피로 +${amount})`;
 }
 
 // 그림자와의 조우 (전투 없는 판정형): 낮은 확률로 발생, 이미 만든 행운 판정을 재사용해 회피/직면을 가른다
@@ -1436,39 +1457,62 @@ function generateRandomDailyEvent() {
     const eastEvents = [
       { text: `[일상] 동쪽 출신 ${c1.name}은/는 다른 지역의 도구를 보고 효율이 아쉽다며 혀를 찼다.`, stat: "mentalNum", amount: -2 },
       { text: `[일상] 동쪽 출신 ${c1.name}은/는 낡은 장치를 분해해 쓸만한 부품을 골라냈다.`, stat: "mentalNum", amount: 3 },
-      { text: `[일상] 동쪽 출신 ${c1.name}은/는 새로운 개조 아이디어를 골똘히 구상하느라 잠을 설쳤다.`, stat: "fatigueNum", amount: 2 }
+      { text: `[일상] 동쪽 출신 ${c1.name}은/는 새로운 개조 아이디어를 골똘히 구상하느라 잠을 설쳤다.`, stat: "fatigueNum", amount: 2 },
+      { text: `[일상] 동쪽 출신 ${c1.name}은/는 낡은 연금 공식을 다시 정리하며 오류를 찾아냈다.`, stat: "mentalNum", amount: 4 },
+      { text: `[일상] 동쪽 출신 ${c1.name}은/는 도구 배치를 조금 더 효율적으로 바꾸고 나서야 만족했다.`, stat: "fatigueNum", amount: -3 }
     ];
     events.push(eastEvents[Math.floor(Math.random() * eastEvents.length)]);
   } else if (c1.nation === "북쪽") {
     const northEvents = [
       { text: `[일상] 북쪽 출신 ${c1.name}은/는 시끌벅적한 자리를 뒤로하고 조용히 자리를 피했다.`, stat: "fatigueNum", amount: -3 },
       { text: `[일상] 북쪽 출신 ${c1.name}은/는 눈 쌓인 지붕을 말없이 손보았다.`, stat: "fatigueNum", amount: -2 },
-      { text: `[일상] 북쪽 출신 ${c1.name}은/는 아무 말 없이 사냥 도구를 손질했다.`, stat: "fatigueNum", amount: -3 }
+      { text: `[일상] 북쪽 출신 ${c1.name}은/는 아무 말 없이 사냥 도구를 손질했다.`, stat: "fatigueNum", amount: -3 },
+      { text: `[일상] 북쪽 출신 ${c1.name}은/는 홀로 먼 설산을 오래 바라보았다.`, stat: "mentalNum", amount: 3 },
+      { text: `[일상] 북쪽 출신 ${c1.name}은/는 필요한 말만 짧게 남기고 자리를 비켜주었다.`, stat: "fatigueNum", amount: -2 }
     ];
     events.push(northEvents[Math.floor(Math.random() * northEvents.length)]);
   } else if (c1.nation === "서쪽") {
     const westEvents = [
       { text: `[일상] 서쪽 출신 ${c1.name}은/는 도움을 받기보다 고장 난 구형 도구를 직접 두드려 고쳤다.`, stat: "mentalNum", amount: 3 },
       { text: `[일상] 서쪽 출신 ${c1.name}은/는 혼자 묵묵히 밭일 비슷한 일을 했다.`, stat: "fatigueNum", amount: -3 },
-      { text: `[일상] 서쪽 출신 ${c1.name}은/는 낡은 담벼락을 손수 보수했다.`, stat: "fatigueNum", amount: -2 }
+      { text: `[일상] 서쪽 출신 ${c1.name}은/는 낡은 담벼락을 손수 보수했다.`, stat: "fatigueNum", amount: -2 },
+      { text: `[일상] 서쪽 출신 ${c1.name}은/는 빌린 것을 형태를 바꿔서라도 반드시 갚으려 애썼다.`, stat: "mentalNum", amount: 2 },
+      { text: `[일상] 서쪽 출신 ${c1.name}은/는 낡은 돌 축대를 살피며 틈을 메웠다.`, stat: "fatigueNum", amount: -2 }
     ];
     events.push(westEvents[Math.floor(Math.random() * westEvents.length)]);
   } else if (c1.nation === "남쪽") {
     const southEvents = [
       { text: `[일상] 남쪽 출신 ${c1.name}은/는 지나가는 이웃에게 붙임성 좋게 말을 걸었다.`, stat: "mentalNum", amount: 3 },
       { text: `[일상] 남쪽 출신 ${c1.name}은/는 지나가는 상인과 흥정하듯 농담을 주고받았다.`, stat: "mentalNum", amount: 4 },
-      { text: `[일상] 남쪽 출신 ${c1.name}은/는 볕 좋은 곳에 나와 한참을 노래를 흥얼거렸다.`, stat: "mentalNum", amount: 3 }
+      { text: `[일상] 남쪽 출신 ${c1.name}은/는 볕 좋은 곳에 나와 한참을 노래를 흥얼거렸다.`, stat: "mentalNum", amount: 3 },
+      { text: `[일상] 남쪽 출신 ${c1.name}은/는 새로 들어온 소식을 여기저기 전하고 다녔다.`, stat: "mentalNum", amount: 2 },
+      { text: `[일상] 남쪽 출신 ${c1.name}은/는 낯선 이에게도 스스럼없이 웃으며 인사를 건넸다.`, stat: "mentalNum", amount: 3 }
     ];
     events.push(southEvents[Math.floor(Math.random() * southEvents.length)]);
   }
 
   // 종족별 일상 이벤트
   if (c1.species === "인간") {
-    events.push({ text: `[일상] ${c1.name}은/는 오래된 사진 한 장을 꺼내 보며 옛 생각에 잠겼다.`, stat: "mentalNum", amount: 3 });
+    const humanEvents = [
+      { text: `[일상] ${c1.name}은/는 오래된 사진 한 장을 꺼내 보며 옛 생각에 잠겼다.`, stat: "mentalNum", amount: 3 },
+      { text: `[일상] ${c1.name}은/는 일기장에 오늘 있었던 일을 짧게 적었다.`, stat: "mentalNum", amount: 2 },
+      { text: `[일상] ${c1.name}은/는 평범한 하루가 새삼 소중하게 느껴졌다.`, stat: "mentalNum", amount: 3 }
+    ];
+    events.push(humanEvents[Math.floor(Math.random() * humanEvents.length)]);
   } else if (c1.species === "괴물") {
-    events.push({ text: `[일상] ${c1.name}은/는 밤이 되자 한결 편안한 얼굴이 되었다.`, stat: "mentalNum", amount: 4 });
+    const monsterEvents = [
+      { text: `[일상] ${c1.name}은/는 밤이 되자 한결 편안한 얼굴이 되었다.`, stat: "mentalNum", amount: 4 },
+      { text: `[일상] ${c1.name}은/는 예민한 감각으로 주변의 낯선 기척을 살폈다.`, stat: "fatigueNum", amount: -2 },
+      { text: `[일상] ${c1.name}은/는 사람들의 시선이 익숙한 듯 담담하게 하루를 보냈다.`, stat: "mentalNum", amount: 2 }
+    ];
+    events.push(monsterEvents[Math.floor(Math.random() * monsterEvents.length)]);
   } else if (c1.species === "혼혈") {
-    events.push({ text: `[일상] ${c1.name}은/는 인간과 괴물, 양쪽의 방식을 오가며 하루를 보냈다.`, stat: "mentalNum", amount: 2 });
+    const mixedEvents = [
+      { text: `[일상] ${c1.name}은/는 인간과 괴물, 양쪽의 방식을 오가며 하루를 보냈다.`, stat: "mentalNum", amount: 2 },
+      { text: `[일상] ${c1.name}은/는 어느 쪽에도 완전히 속하지 않는 듯한 기분을 곱씹었다.`, stat: "mentalNum", amount: -2 },
+      { text: `[일상] ${c1.name}은/는 양쪽 모두에게서 배운 요령으로 일을 수월하게 해치웠다.`, stat: "fatigueNum", amount: -3 }
+    ];
+    events.push(mixedEvents[Math.floor(Math.random() * mixedEvents.length)]);
   }
 
   // 특성에 따라 어울리는 일상 이벤트가 조금 더 자주 뽑히도록 후보를 추가한다
