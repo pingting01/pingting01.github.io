@@ -397,6 +397,43 @@ function checkEventCard() {
       const c = chars[Math.floor(Math.random() * chars.length)];
       c.healthNum = Math.max(0, (c.healthNum || 0) - 5);
       return `✨ [사건] ${c.name}은/는 사소한 부주의로 가벼운 찰과상을 입었다. 대단한 상처는 아니었다. (체력 -5)`;
+    },
+    () => {
+      // 정전 사건 - 조명 아이템 소지 여부에 따라 결과가 갈린다
+      if (playerInventory.includes("휴대용 조명") || playerInventory.includes("비상용 초")) {
+        return `✨ [사건] 밤사이 정전이 있었지만, 미리 챙겨둔 조명 덕분에 다들 무사히 밤을 넘겼다.`;
+      }
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      const stats = calculateMaxStats(c);
+      c.fatigueNum = Math.min(stats.maxFatigue, (c.fatigueNum || 0) + 4);
+      return `✨ [사건] 밤사이 정전이 있었다. ${c.name}은/는 어둠 속에서 뒤척이며 불편한 밤을 보냈다. (피로 +4)`;
+    },
+    () => {
+      // 작은 불씨 사건 - 소화기 소지 여부에 따라 결과가 갈린다
+      if (playerInventory.includes("휴대용 소화기")) {
+        return `✨ [사건] 작은 불씨가 났지만, 미리 갖춰둔 소화기 덕분에 금방 진압되었다.`;
+      }
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      c.mentalNum = Math.max(0, (c.mentalNum || 0) - 3);
+      return `✨ [사건] 작은 불씨가 나서 한바탕 소동이 있었다. ${c.name}은/는 놀란 가슴을 쓸어내렸다. (정신력 -3)`;
+    },
+    () => {
+      // 갑작스런 소나기 - 방수 장비 소지 여부에 따라 결과가 갈린다
+      if (playerInventory.includes("방수 외투") || playerInventory.includes("다용도 장화")) {
+        chars.forEach(c => { c.fatigueNum = Math.max(0, (c.fatigueNum || 0) - 2); });
+        return `✨ [사건] 갑작스러운 소나기가 쏟아졌지만, 방수 장비를 갖춘 이들 덕분에 다들 크게 젖지 않았다. (전원 피로 -2)`;
+      }
+      return `✨ [사건] 갑작스러운 소나기가 쏟아져 다들 흠뻑 젖은 채로 뛰어다녔다.`;
+    },
+    () => {
+      // 무전 소식 - 무전기 소지 여부에 따라 결과가 갈린다
+      const c = chars[Math.floor(Math.random() * chars.length)];
+      if (playerInventory.includes("무전기")) {
+        const stats = calculateMaxStats(c);
+        c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 4);
+        return `✨ [사건] ${c.name}은/는 무전기 너머로 먼 안전지대의 목소리를 들었다. 별 내용은 아니었지만 왠지 안심이 되었다. (정신력 +4)`;
+      }
+      return `✨ [사건] 어디선가 알아들을 수 없는 무전 잡음이 잠깐 들리다 사라졌다.`;
     }
   ];
 
@@ -1510,7 +1547,7 @@ function generateRandomDailyEvent() {
     const mixedEvents = [
       { text: `[일상] ${c1.name}은/는 인간과 괴물, 양쪽의 방식을 오가며 하루를 보냈다.`, stat: "mentalNum", amount: 2 },
       { text: `[일상] ${c1.name}은/는 어느 쪽에도 완전히 속하지 않는 듯한 기분을 곱씹었다.`, stat: "mentalNum", amount: -2 },
-      { text: `[일상] ${c1.name}은/는 양쪽 모두에게서 배운 요령으로 일을 수월하게 해치웠다.`, stat: "fatigueNum", amount: -3 }
+      { text: `[일상] ${c1.name}은/는 괴물과 인간, 양쪽 모두에게서 배운 요령으로 일을 수월하게 해치웠다.`, stat: "fatigueNum", amount: -3 }
     ];
     events.push(mixedEvents[Math.floor(Math.random() * mixedEvents.length)]);
   }
