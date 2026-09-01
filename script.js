@@ -441,6 +441,65 @@ function checkEventCard() {
         return `✨ [사건] ${c.name}은/는 무전기 너머로 먼 안전지대의 목소리를 들었다. 별 내용은 아니었지만 왠지 안심이 되었다. (정신력 +4)`;
       }
       return `✨ [사건] 어디선가 알아들을 수 없는 무전 잡음이 잠깐 들리다 사라졌다.`;
+    },
+    () => {
+      // 관계가 있는 두 사람이 함께 소동을 넘기는 사건 (관계 시스템과 연동)
+      const withRel = chars.filter(c => Array.isArray(c.relationships) && c.relationships.length > 0);
+      if (withRel.length === 0) {
+        return `✨ [사건] 안전지대 게시판에 낯선 손글씨 메모가 붙어 있었다. 누가 남긴 것인지는 끝내 알 수 없었다.`;
+      }
+      const c1 = withRel[Math.floor(Math.random() * withRel.length)];
+      const relEntry = c1.relationships[Math.floor(Math.random() * c1.relationships.length)];
+      const partner = chars.find(c => c.charId === relEntry.targetCharId);
+      if (!partner) {
+        return `✨ [사건] 안전지대 게시판에 낯선 손글씨 메모가 붙어 있었다. 누가 남긴 것인지는 끝내 알 수 없었다.`;
+      }
+      const stats1 = calculateMaxStats(c1);
+      const stats2 = calculateMaxStats(partner);
+      c1.mentalNum = Math.min(stats1.maxMental, (c1.mentalNum || 0) + 5);
+      partner.mentalNum = Math.min(stats2.maxMental, (partner.mentalNum || 0) + 5);
+      return `✨ [사건] 갑작스러운 소동이 있었지만, ${c1.name}과 ${partner.name}가 힘을 모아 무사히 수습했다. (두 사람 정신력 +5)`;
+    },
+    () => {
+      // 동물과의 교감 특성 보유자와 연동
+      const withTrait = chars.filter(c => (c.traits || "").includes("동물과의 교감"));
+      if (withTrait.length === 0) {
+        return `✨ [사건] 멀리서 들짐승 울음소리가 들렸다가 이내 잦아들었다.`;
+      }
+      const c = withTrait[Math.floor(Math.random() * withTrait.length)];
+      const stats = calculateMaxStats(c);
+      c.mentalNum = Math.min(stats.maxMental, (c.mentalNum || 0) + 6);
+      return `✨ [사건] ${c.name}에게 낯선 들짐승 한 마리가 스스럼없이 다가왔다. (정신력 +6)`;
+    },
+    () => {
+      // 뜻밖의 수입/지출
+      if (Math.random() < 0.5) {
+        const amount = Math.floor(Math.random() * 50) + 30;
+        playerMoney += amount;
+        return `✨ [사건] 낡은 상자 안에서 잊고 있던 리움 뭉치가 나왔다. (+${amount} 리움)`;
+      }
+      const amount = Math.min(playerMoney, Math.floor(Math.random() * 40) + 20);
+      playerMoney -= amount;
+      return `✨ [사건] 보관하던 물자 일부가 상해서 어쩔 수 없이 처분했다. (-${amount} 리움)`;
+    },
+    () => {
+      // 국가별 문화가 느껴지는 세계 사건 (특정 인물과 무관하게 배경으로 흘러감)
+      const cultureEvents = [
+        "북쪽에서 온 상단이 두꺼운 모피를 팔러 들렀다.",
+        "남쪽 항구 쪽에서 진귀한 과일이 실려 왔다는 소문이 돌았다.",
+        "동쪽 기술자들이 새로운 정수 장치를 시연하러 왔다.",
+        "서쪽 채석장에서 캐낸 단단한 돌이 거래되기 시작했다."
+      ];
+      return `✨ [사건] ${cultureEvents[Math.floor(Math.random() * cultureEvents.length)]}`;
+    },
+    () => {
+      // 오염도가 있는 주민들에게 전체적으로 옅어지는 방향의 사건 (그림자 오염도 시스템과 연동)
+      const affected = chars.filter(c => (c.corruptionNum || 0) > 0);
+      if (affected.length === 0) {
+        return `✨ [사건] 하늘이 유난히 맑아 다들 오랜만에 개운한 기분을 느꼈다.`;
+      }
+      affected.forEach(c => { c.corruptionNum = Math.max(0, c.corruptionNum - 5); });
+      return `✨ [사건] 정체 모를 맑은 바람이 정착촌을 한 차례 훑고 지나갔다. (오염도 있는 주민 전원 -5)`;
     }
   ];
 
