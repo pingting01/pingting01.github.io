@@ -399,9 +399,14 @@ function checkEventCard() {
       return `✨ [사건] ${c.name}은/는 사소한 부주의로 가벼운 찰과상을 입었다. 대단한 상처는 아니었다. (체력 -5)`;
     },
     () => {
-      // 정전 사건 - 조명 아이템 소지 여부에 따라 결과가 갈린다
-      if (playerInventory.includes("휴대용 조명") || playerInventory.includes("비상용 초")) {
-        return `✨ [사건] 밤사이 정전이 있었지만, 미리 챙겨둔 조명 덕분에 다들 무사히 밤을 넘겼다.`;
+      // 정전 사건 - 초는 실제로 소모되고, 손전등류는 재사용 가능한 도구라 소모되지 않는다
+      if (playerInventory.includes("비상용 초")) {
+        const idx = playerInventory.indexOf("비상용 초");
+        playerInventory.splice(idx, 1);
+        return `✨ [사건] 밤사이 정전이 있었지만, 미리 챙겨둔 초 덕분에 다들 무사히 밤을 넘겼다. (초 소모)`;
+      }
+      if (playerInventory.includes("휴대용 조명")) {
+        return `✨ [사건] 밤사이 정전이 있었지만, 휴대하고 있던 조명 덕분에 다들 무사히 밤을 넘겼다.`;
       }
       const c = chars[Math.floor(Math.random() * chars.length)];
       const stats = calculateMaxStats(c);
@@ -409,9 +414,11 @@ function checkEventCard() {
       return `✨ [사건] 밤사이 정전이 있었다. ${c.name}은/는 어둠 속에서 뒤척이며 불편한 밤을 보냈다. (피로 +4)`;
     },
     () => {
-      // 작은 불씨 사건 - 소화기 소지 여부에 따라 결과가 갈린다
+      // 작은 불씨 사건 - 소화기는 한 번 쓰면 실제로 없어진다
       if (playerInventory.includes("휴대용 소화기")) {
-        return `✨ [사건] 작은 불씨가 났지만, 미리 갖춰둔 소화기 덕분에 금방 진압되었다.`;
+        const idx = playerInventory.indexOf("휴대용 소화기");
+        playerInventory.splice(idx, 1);
+        return `✨ [사건] 작은 불씨가 났지만, 갖고 있던 소화기로 급히 진압했다. (소화기 소모)`;
       }
       const c = chars[Math.floor(Math.random() * chars.length)];
       c.mentalNum = Math.max(0, (c.mentalNum || 0) - 3);
@@ -869,15 +876,36 @@ function attemptShadowEncounter(char, fortune) {
 
   let msg = "";
   if (fortune.tier === "불운") {
-    msg = ` 그림자와 마주쳐 다급히 몸을 피했다.`;
-  } else {
-    msg = traits.includes("불길한 직감")
-      ? ` 불길한 기운을 미리 느끼고 그림자를 마주치기 전에 피했다.`
-      : ` 그림자와 마주쳤으나 침착하게 피해 지나쳤다.`;
+    const badLines = [
+      ` 그림자와 마주쳐 다급히 몸을 피했다.`,
+      ` 그림자에게 발각되어 정신없이 도망쳤다.`,
+      ` 그림자와 스치듯 부딪혀 몸을 크게 휘청였다.`
+    ];
+    msg = badLines[Math.floor(Math.random() * badLines.length)];
 
-    const coreChance = 0.3;
+    // 불운한 조우는 판정 결과로 가벼운 부상을 입을 수 있다 (전투 없이, 주사위 한 번으로 결정)
+    if (Math.random() < 0.35) {
+      const dmg = Math.floor(Math.random() * 6) + 3; // 3~8
+      char.healthNum = Math.max(0, (char.healthNum || 0) - dmg);
+      msg += ` 그 와중에 몸이 상했다. (체력 -${dmg})`;
+    }
+  } else {
+    const isKeen = traits.includes("불길한 직감");
+    const goodLines = isKeen
+      ? [
+          ` 불길한 기운을 미리 느끼고 그림자를 마주치기 전에 피했다.`,
+          ` 뭔가 이상한 낌새를 느끼고 미리 방향을 틀었다.`
+        ]
+      : [
+          ` 그림자와 마주쳤으나 침착하게 피해 지나쳤다.`,
+          ` 그림자의 기척을 눈치채고 숨을 죽인 채 지나쳤다.`,
+          ` 그림자와 눈이 마주쳤지만, 별일 없이 각자의 길을 갔다.`
+        ];
+    msg = goodLines[Math.floor(Math.random() * goodLines.length)];
+
+    const coreChance = fortune.tier === "행운" ? 0.3 : 0.1;
     const meatChance = traits.includes("도축과 손질") ? 0.35 : 0.15;
-    if (fortune.tier === "행운" && Math.random() < coreChance) {
+    if (Math.random() < coreChance) {
       playerInventory.push("그림자 핵");
       msg += ` 그 자리에 남은 <b>[그림자 핵]</b>을 조심스레 회수했다.`;
     } else if (Math.random() < meatChance) {
