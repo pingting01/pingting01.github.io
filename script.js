@@ -91,7 +91,7 @@ const itemDatabase = {
 // 도시 및 마을 의뢰 템플릿
 const questTemplates = [
   { title: "황야 자원 수집", desc: "야외 탐험을 진행하여 생존 물자를 확보하세요.", reward: 200, type: "adventure" },
-  { title: "부품 조달 의뢰", desc: "탐험을 통해 쓸만한 부품과 공구를 모아 전달하세요.", reward: 260, type: "adventure" },
+  { title: "부품 조달 의뢰", desc: "탐험을 통해 [범용 부품] 2개를 모아 전달하세요.", reward: 260, type: "adventure", itemRequired: "범용 부품", itemCount: 2 },
   { title: "안전지대 순찰 보고", desc: "나들이를 나가 주변 동향을 살피고 보고하세요.", reward: 150, type: "outing" },
   { title: "상점 물자 구매 대행", desc: "시가지 상점에 들러 필요한 물자를 사서 전달하세요.", reward: 180, type: "outing" },
   { title: "소식지 정독 임무", desc: "오늘의 소식을 확인하고 정보를 정리해 전달하세요.", reward: 120, type: "news" }
@@ -1442,43 +1442,81 @@ function getRelationshipEventCandidates(c1, chars) {
     lines = [
       `[관계] ${parent.name}은/는 잠 못 드는 ${child.name}을/를 위해 나즈막히 자장가를 흥얼거렸다.`,
       `[관계] ${parent.name}은/는 ${child.name}에게 오늘 있었던 일을 조곤조곤 물었다.`,
-      `[관계] ${child.name}은/는 서투르게 만든 것을 ${parent.name}에게 건네며 해맑게 웃었다.`
+      `[관계] ${child.name}은/는 서투르게 만든 것을 ${parent.name}에게 건네며 해맑게 웃었다.`,
+      `[관계] ${parent.name}은/는 ${child.name}의 옷매무새를 말없이 고쳐주었다.`,
+      `[관계] ${child.name}은/는 ${parent.name}의 손을 꼭 붙잡고 놓지 않았다.`,
+      `[관계] ${parent.name}은/는 ${child.name}이/가 잠든 걸 확인하고서야 눈을 붙였다.`
     ];
   } else if (rel === "연인") {
     lines = [
       `[관계] ${c1.name}과 ${partner.name}는 나란히 앉아 노을을 바라보았다.`,
       `[관계] ${c1.name}은/는 ${partner.name}를 위해 작은 선물을 몰래 준비했다.`,
-      `[관계] ${c1.name}과 ${partner.name}는 서로의 하루 이야기를 나누며 웃었다.`
+      `[관계] ${c1.name}과 ${partner.name}는 서로의 하루 이야기를 나누며 웃었다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}의 손을 슬쩍 잡았다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 별것 아닌 일로 티격태격하다 이내 웃어버렸다.`
     ];
   } else if (rel === "배우자") {
     lines = [
       `[관계] ${c1.name}과 ${partner.name}는 저녁을 함께 차려 먹었다.`,
       `[관계] ${c1.name}은/는 ${partner.name}의 잔소리를 못 이기는 척 들어주었다.`,
-      `[관계] ${c1.name}과 ${partner.name}는 별일 아닌 하루를 나란히 앉아 흘려보냈다.`
+      `[관계] ${c1.name}과 ${partner.name}는 별일 아닌 하루를 나란히 앉아 흘려보냈다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}의 몫까지 챙겨 자리에 남겨두었다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 집안일을 두고 사소하게 실랑이를 벌이다 결국 반씩 나눴다.`
     ];
   } else if (rel === "친구") {
     lines = [
       `[관계] ${c1.name}과 ${partner.name}는 실없는 농담을 주고받으며 시간을 보냈다.`,
-      `[관계] ${c1.name}은/는 ${partner.name}에게 사소한 고민을 털어놓았다.`
+      `[관계] ${c1.name}은/는 ${partner.name}에게 사소한 고민을 털어놓았다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 별 이유 없이 나란히 걸으며 시간을 보냈다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}에게 괜히 장난을 걸었다.`
     ];
   } else if (rel === "형제자매") {
     lines = [
       `[관계] ${c1.name}과 ${partner.name}는 어릴 적 이야기를 하며 한참을 웃었다.`,
-      `[관계] ${c1.name}은/는 ${partner.name}의 물건을 몰래 빌렸다가 들켜 한소리 들었다.`
+      `[관계] ${c1.name}은/는 ${partner.name}의 물건을 몰래 빌렸다가 들켜 한소리 들었다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 별것 아닌 일로 투닥거리다 금세 풀었다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}의 몫을 슬쩍 더 챙겨주었다.`
     ];
   } else if (rel === "보호자와 피보호자") {
     lines = [
       `[관계] ${c1.name}은/는 ${partner.name}가 다치지 않았는지 꼼꼼히 살폈다.`,
-      `[관계] ${c1.name}과 ${partner.name}는 나란히 앉아 잠시 아무 말 없이 시간을 보냈다.`
+      `[관계] ${c1.name}과 ${partner.name}는 나란히 앉아 잠시 아무 말 없이 시간을 보냈다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}에게 조심하라는 말을 몇 번이고 당부했다.`
+    ];
+  } else if (rel === "동료") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 서로의 몫을 나누어 일을 처리했다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}에게 요령을 슬쩍 알려주었다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 일을 마친 뒤 나란히 앉아 쉬었다.`
+    ];
+  } else if (rel === "친척") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 오랜만에 서로의 안부를 물었다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}에게 집안 소식을 전해주었다.`
+    ];
+  } else if (rel === "은인") {
+    lines = [
+      `[관계] ${c1.name}은/는 ${partner.name}에게 다시 한번 고마움을 표했다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}에게 진 빚을 갚을 방법을 곰곰이 생각했다.`
+    ];
+  } else if (rel === "전 연인" || rel === "전 배우자") {
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 우연히 마주쳐 어색하게 인사만 나눴다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}를 멀리서 보고도 모르는 척 지나쳤다.`
     ];
   } else if (rel === "원수" || rel === "경쟁자") {
-    lines = [`[관계] ${c1.name}과 ${partner.name}는 마주치자마자 날선 말을 주고받았다.`];
+    lines = [
+      `[관계] ${c1.name}과 ${partner.name}는 마주치자마자 날선 말을 주고받았다.`,
+      `[관계] ${c1.name}은/는 ${partner.name}가 하는 일마다 못마땅한 눈치를 보였다.`,
+      `[관계] ${c1.name}과 ${partner.name}는 서로 지지 않으려 괜히 한마디씩 더 얹었다.`
+    ];
   } else {
     return [];
   }
 
   const isNegative = (rel === "원수" || rel === "경쟁자");
-  const amount = isNegative ? -3 : 3;
+  const isAwkward = (rel === "전 연인" || rel === "전 배우자");
+  const amount = isNegative ? -3 : (isAwkward ? -1 : 3);
   const chosenText = lines[Math.floor(Math.random() * lines.length)];
 
   return [{
@@ -1739,6 +1777,13 @@ function handleQuestAction() {
     currentQuest = { ...questTemplates[Math.floor(Math.random() * questTemplates.length)], status: "accepted" };
     addLog(`[의뢰] [${currentQuest.title}] 수락. (${currentQuest.desc})`);
   } else if (currentQuest.status === "completed") {
+    if (currentQuest.itemRequired) {
+      for (let i = 0; i < currentQuest.itemCount; i++) {
+        const idx = playerInventory.indexOf(currentQuest.itemRequired);
+        if (idx !== -1) playerInventory.splice(idx, 1);
+      }
+      addLog(`[의뢰] [${currentQuest.itemRequired}] ${currentQuest.itemCount}개를 전달했습니다.`);
+    }
     playerMoney += currentQuest.reward;
     addLog(`[보상] 의뢰 [${currentQuest.title}] 완수 보상 ${currentQuest.reward.toLocaleString()} 리움을 수령했다.`);
     currentQuest = null;
@@ -1748,11 +1793,16 @@ function handleQuestAction() {
 }
 
 function checkQuestProgress(type) {
-  if (currentQuest && currentQuest.status === "accepted" && currentQuest.type === type) {
-    currentQuest.status = "completed";
-    addLog(`[의뢰] [${currentQuest.title}] 목표를 달성했습니다. 게시판에서 보상을 수령하세요.`);
-    updateQuestUI();
+  if (!currentQuest || currentQuest.status !== "accepted" || currentQuest.type !== type) return;
+
+  if (currentQuest.itemRequired) {
+    const have = playerInventory.filter(i => i === currentQuest.itemRequired).length;
+    if (have < currentQuest.itemCount) return; // 아직 필요한 아이템이 모자라면 완료되지 않는다
   }
+
+  currentQuest.status = "completed";
+  addLog(`[의뢰] [${currentQuest.title}] 목표를 달성했습니다. 게시판에서 보상을 수령하세요.`);
+  updateQuestUI();
 }
 
 function updateQuestUI() {
