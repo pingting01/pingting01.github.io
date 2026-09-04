@@ -976,6 +976,14 @@ function attemptShadowEncounter(char, fortune) {
 }
 
 // 상호 연인으로 지정된 성인 커플만 대상으로 하는 저출산 이벤트 (3% 확률)
+// 부모의 종족을 물려받는 규칙: 같은 종족이면 그대로, 괴물+인간이면 혼혈, 혼혈+한쪽이면 둘 중 하나를 무작위로 따른다
+function inheritSpecies(species1, species2) {
+  if (species1 === species2) return species1;
+  const isPureMix = (species1 === "괴물" && species2 === "인간") || (species1 === "인간" && species2 === "괴물");
+  if (isPureMix) return "혼혈";
+  return Math.random() < 0.5 ? species1 : species2;
+}
+
 function attemptCoupleBirth(chars) {
   if (chars.length >= maxCharacters) return null;
 
@@ -1016,7 +1024,7 @@ function attemptCoupleBirth(chars) {
     mbti: babyData.mbti[Math.floor(Math.random() * babyData.mbti.length)],
     foodPref: babyData.food[Math.floor(Math.random() * babyData.food.length)],
     nation: p1.nation,
-    species: p1.species,
+    species: inheritSpecies(p1.species, p2.species),
     lifeStage: "어린이"
   };
   const babyStats = calculateMaxStats(babyBase);
@@ -1033,17 +1041,17 @@ function attemptCoupleBirth(chars) {
     corruptionNum: 0,
     birthDay: Math.floor(Math.random() * 365) + 1,
     relationships: [
-      { targetCharId: p1.charId, relation: "부모" },
-      { targetCharId: p2.charId, relation: "부모" }
+      { targetCharId: p1.charId, relation: "자식" },
+      { targetCharId: p2.charId, relation: "자식" }
     ]
   };
   chars.push(babyFull);
 
-  // 부모 쪽에도 자식 관계를 추가한다 (연인 관계는 그대로 유지 - 부부이자 부모가 동시에 가능)
+  // 부모 쪽에도 부모 관계를 추가한다 (연인 관계는 그대로 유지 - 부부이자 부모가 동시에 가능)
   if (!Array.isArray(p1.relationships)) p1.relationships = [];
   if (!Array.isArray(p2.relationships)) p2.relationships = [];
-  p1.relationships.push({ targetCharId: babyFull.charId, relation: "자식" });
-  p2.relationships.push({ targetCharId: babyFull.charId, relation: "자식" });
+  p1.relationships.push({ targetCharId: babyFull.charId, relation: "부모" });
+  p2.relationships.push({ targetCharId: babyFull.charId, relation: "부모" });
 
   p1.childCount = (p1.childCount || 0) + 1;
   p2.childCount = p1.childCount;
@@ -1052,14 +1060,14 @@ function attemptCoupleBirth(chars) {
   // 주민 등록실에도 카드로 반영해두어야 다음 저장 시 아이가 사라지지 않는다
   // (관계는 charId 기반으로 저장되어 있으므로, 카드에 보여줄 땐 이름 기반으로 바꿔서 전달)
   const babyUiData = { ...babyFull, relationships: [
-    { relation: "부모", targetName: p1.name },
-    { relation: "부모", targetName: p2.name }
+    { relation: "자식", targetName: p1.name },
+    { relation: "자식", targetName: p2.name }
   ]};
   addCharacter(babyUiData);
 
   document.querySelectorAll(".character-card").forEach(card => {
     if (card.dataset.charId === p1.charId || card.dataset.charId === p2.charId) {
-      addRelationshipRow(card, { relation: "자식", targetName: babyName });
+      addRelationshipRow(card, { relation: "부모", targetName: babyName });
     }
   });
 
